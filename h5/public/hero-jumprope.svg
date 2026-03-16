@@ -1,0 +1,39 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g1" x1="120" y1="90" x2="1040" y2="640" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0078D4"/>
+      <stop offset="0.55" stop-color="#00B7C3"/>
+      <stop offset="1" stop-color="#B71C1C"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFFFFF" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.06"/>
+    </linearGradient>
+    <filter id="blur" x="-40" y="-40" width="1280" height="800" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="720" rx="48" fill="url(#g1)"/>
+
+  <circle cx="250" cy="190" r="140" fill="#fff" opacity="0.14"/>
+  <circle cx="980" cy="180" r="180" fill="#fff" opacity="0.10"/>
+  <circle cx="870" cy="560" r="220" fill="#fff" opacity="0.08"/>
+
+  <path d="M140 520c96-120 212-182 346-182 152 0 280 78 418 252" stroke="#fff" stroke-width="18" stroke-linecap="round" opacity="0.55"/>
+  <path d="M150 530c102-110 216-168 336-168 146 0 266 68 402 226" stroke="#fff" stroke-width="10" stroke-linecap="round" opacity="0.55"/>
+
+  <rect x="140" y="120" width="520" height="220" rx="28" fill="url(#g2)" stroke="#fff" stroke-opacity="0.18"/>
+  <rect x="172" y="154" width="260" height="18" rx="9" fill="#fff" opacity="0.75"/>
+  <rect x="172" y="188" width="420" height="12" rx="6" fill="#fff" opacity="0.42"/>
+  <rect x="172" y="212" width="380" height="12" rx="6" fill="#fff" opacity="0.34"/>
+  <rect x="172" y="248" width="168" height="44" rx="16" fill="#fff" opacity="0.68"/>
+
+  <g filter="url(#blur)" opacity="0.14">
+    <path d="M705 112c60 0 108 48 108 108s-48 108-108 108-108-48-108-108 48-108 108-108Z" fill="#fff"/>
+  </g>
+  <path d="M726 152c30 0 54 24 54 54s-24 54-54 54-54-24-54-54 24-54 54-54Z" fill="#fff" opacity="0.25"/>
+  <path d="M726 170c20 0 36 16 36 36s-16 36-36 36-36-16-36-36 16-36 36-36Z" fill="#fff" opacity="0.4"/>
+  <path d="M726 186c11 0 20 9 20 20s-9 20-20 20-20-9-20-20 9-20 20-20Z" fill="#fff" opacity="0.8"/>
+</svg>
+
