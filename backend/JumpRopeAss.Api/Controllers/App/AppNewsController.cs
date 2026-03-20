@@ -35,11 +35,11 @@ public sealed class AppNewsController : ControllerBase
         return ApiResponse<object>.Ok(new { page, pageSize, total, items });
     }
 
-    [HttpGet("{id:ulong}")]
-    public async Task<ApiResponse<object>> Detail([FromRoute] ulong id)
+    [HttpGet("{id:long}")]
+    public async Task<ApiResponse<object>> Detail([FromRoute] long id)
     {
         var item = await _db.NewsArticles.AsNoTracking()
-            .Where(x => x.Id == id)
+            .Where(x => x.Id == (ulong)id)
             .Select(x => new
             {
                 id = x.Id,

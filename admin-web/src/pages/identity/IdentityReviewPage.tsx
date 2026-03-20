@@ -23,9 +23,9 @@ import {
   ExportOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { downloadCsv } from '../../lib/exportCsv'
-import { formatDateTime, randomDateWithinDays, randomInt } from '../../lib/mockData'
+import { apiFetch } from '../../lib/api'
 
 type IdentityStatus = 0 | 1 | 2
 
@@ -33,7 +33,7 @@ type IdentityRow = {
   id: number
   userId: number
   realName: string
-  idCardNo: string
+  idCardNoMasked: string
   mobile: string
   status: IdentityStatus
   rejectReason?: string
@@ -46,25 +46,6 @@ function statusInfo(s: IdentityStatus) {
   return { text: '已驳回', color: 'red' as const }
 }
 
-function createMockRows(): IdentityRow[] {
-  const names = ['张三', '李四', '王五', '赵六', '钱七', '孙八', '周九']
-  return Array.from({ length: 44 }).map((_, i) => {
-    const dt = randomDateWithinDays(30)
-    const status: IdentityStatus = (i % 6 === 0 ? 2 : i % 5 === 0 ? 1 : 0) as IdentityStatus
-    const name = names[i % names.length]
-    return {
-      id: 70000 + i,
-      userId: 60000 + randomInt(1, 600),
-      realName: name,
-      idCardNo: `4301************${randomInt(1000, 9999)}`,
-      mobile: `13${randomInt(0, 9)}${randomInt(10000000, 99999999)}`,
-      status,
-      rejectReason: status === 2 ? '身份证号与姓名不一致' : undefined,
-      createdAt: formatDateTime(dt),
-    }
-  })
-}
-
 type FilterValues = {
   status?: IdentityStatus | 'all'
   keyword?: string
@@ -73,43 +54,79 @@ type FilterValues = {
 export function IdentityReviewPage() {
   const screens = Grid.useBreakpoint()
   const [form] = Form.useForm<FilterValues>()
-  const [rows, setRows] = useState<IdentityRow[]>(() => createMockRows())
+  const [rows, setRows] = useState<IdentityRow[]>([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [current, setCurrent] = useState<IdentityRow | null>(null)
 
-  const values = Form.useWatch([], form)
-
-  const filtered = useMemo(() => {
-    const v = (values ?? {}) as FilterValues
-    const kw = (v.keyword ?? '').trim()
-    const st = v.status ?? 'all'
-
-    return rows.filter((r) => {
-      if (st !== 'all' && r.status !== st) return false
-      if (kw) {
-        const hay = `${r.realName} ${r.mobile} ${r.userId} ${r.id}`
-        if (!hay.includes(kw)) return false
+  const loadData = async (p = page, ps = pageSize) => {
+    setLoading(true)
+    try {
+      const v = form.getFieldsValue() as FilterValues
+      const qs = new URLSearchParams()
+      const keyword = (v.keyword ?? '').trim()
+      const status = v.status ?? 'all'
+      if (keyword) qs.set('keyword', keyword)
+      if (status !== 'all') qs.set('status', String(status))
+      qs.set('page', String(p))
+      qs.set('pageSize', String(ps))
+      const res = await apiFetch<any>(`/api/v1/admin/identity-submits?${qs.toString()}`)
+      if (res.code !== 0) {
+        message.error(res.message || '加载失败')
+        return
       }
-      return true
-    })
-  }, [rows, values])
+      setTotal(res.data?.total ?? 0)
+      setRows(
+        (res.data?.items ?? []).map((x: any) => ({
+          id: Number(x.id),
+          userId: Number(x.userId),
+          realName: String(x.realName),
+          idCardNoMasked: String(x.idCardNoMasked ?? ''),
+          mobile: String(x.mobile),
+          status: Number(x.status) as IdentityStatus,
+          rejectReason: x.rejectReason ?? undefined,
+          createdAt: String(x.createdAt ?? '').replace('T', ' '),
+        })),
+      )
+    } catch (e) {
+      console.error(e)
+      message.error('加载失败')
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const paged = useMemo(() => {
-    const start = (page - 1) * pageSize
-    return filtered.slice(start, start + pageSize)
-  }, [filtered, page, pageSize])
+  useEffect(() => {
+    loadData()
+  }, [])
 
   const approve = (r: IdentityRow) => {
     if (r.status !== 0) {
       message.warning('当前状态不可审核通过')
       return
     }
-    setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: 1, rejectReason: undefined } : x)))
-    message.success('已通过认证')
+    Modal.confirm({
+      title: '通过认证审核',
+      okText: '确认通过',
+      cancelText: '取消',
+      content: '通过后用户将进入已认证状态',
+      onOk: async () => {
+        const res = await apiFetch<any>(`/api/v1/admin/identity-submits/${r.id}/approve`, {
+          method: 'POST',
+          body: JSON.stringify({ remark: null }),
+        })
+        if (res.code !== 0) {
+          message.error(res.message || '操作失败')
+          return
+        }
+        message.success('已通过认证')
+        await loadData()
+      },
+    })
   }
 
   const reject = (r: IdentityRow) => {
@@ -141,8 +158,16 @@ export function IdentityReviewPage() {
           message.error('请输入驳回原因')
           throw new Error('reason required')
         }
-        setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: 2, rejectReason: reason } : x)))
+        const res = await apiFetch<any>(`/api/v1/admin/identity-submits/${r.id}/reject`, {
+          method: 'POST',
+          body: JSON.stringify({ reason }),
+        })
+        if (res.code !== 0) {
+          message.error(res.message || '操作失败')
+          return
+        }
         message.success('已驳回')
+        await loadData()
       },
     })
   }
@@ -193,7 +218,10 @@ export function IdentityReviewPage() {
           form={form}
           layout="vertical"
           initialValues={{ status: 'all' }}
-          onValuesChange={() => setPage(1)}
+          onValuesChange={() => {
+            setPage(1)
+            loadData(1, pageSize)
+          }}
         >
           <Row gutter={[16, 8]}>
             <Col xs={24} sm={12} md={8} lg={6}>
@@ -219,10 +247,7 @@ export function IdentityReviewPage() {
                   icon={<ReloadOutlined />}
                   loading={loading}
                   onClick={async () => {
-                    setLoading(true)
-                    await new Promise((r) => setTimeout(r, 450))
-                    setRows(createMockRows())
-                    setLoading(false)
+                    await loadData()
                     message.success('已刷新')
                   }}
                 >
@@ -233,7 +258,7 @@ export function IdentityReviewPage() {
                   onClick={() => {
                     downloadCsv(
                       `identity_${Date.now()}.csv`,
-                      filtered,
+                      rows,
                       [
                         { title: '提交ID', value: (r) => r.id },
                         { title: '账号ID', value: (r) => r.userId },
@@ -248,7 +273,15 @@ export function IdentityReviewPage() {
                 >
                   导出
                 </Button>
-                <Button onClick={() => form.resetFields()}>重置</Button>
+                <Button
+                  onClick={() => {
+                    form.resetFields()
+                    setPage(1)
+                    loadData(1, pageSize)
+                  }}
+                >
+                  重置
+                </Button>
                 <Typography.Text type="secondary">待审核：{rows.filter((x) => x.status === 0).length}</Typography.Text>
               </Space>
             </Col>
@@ -260,16 +293,17 @@ export function IdentityReviewPage() {
         <Table
           rowKey="id"
           columns={columns}
-          dataSource={paged}
+          dataSource={rows}
           loading={loading}
           pagination={{
             current: page,
             pageSize,
-            total: filtered.length,
+            total,
             showSizeChanger: true,
             onChange: (p, ps) => {
               setPage(p)
               setPageSize(ps)
+              loadData(p, ps)
             },
           }}
           scroll={{ x: 1100 }}
@@ -302,7 +336,7 @@ export function IdentityReviewPage() {
                 <Descriptions.Item label="提交ID">{current.id}</Descriptions.Item>
                 <Descriptions.Item label="账号ID">{current.userId}</Descriptions.Item>
                 <Descriptions.Item label="姓名">{current.realName}</Descriptions.Item>
-                <Descriptions.Item label="身份证号">{current.idCardNo}</Descriptions.Item>
+                <Descriptions.Item label="身份证号">{current.idCardNoMasked}</Descriptions.Item>
                 <Descriptions.Item label="手机号">{current.mobile}</Descriptions.Item>
                 <Descriptions.Item label="状态">
                   <Tag color={statusInfo(current.status).color}>{statusInfo(current.status).text}</Tag>

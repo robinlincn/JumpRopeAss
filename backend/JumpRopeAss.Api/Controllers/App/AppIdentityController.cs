@@ -26,7 +26,7 @@ public sealed class AppIdentityController : ControllerBase
         var latest = await _db.UserIdentitySubmits.AsNoTracking()
             .Where(x => x.UserId == userId)
             .OrderByDescending(x => x.CreatedAt)
-            .Select(x => new { x.Id, x.Status, x.RejectReason, x.CreatedAt })
+            .Select(x => new { x.Id, x.Status, x.RejectReason, x.CreatedAt, x.RealName, x.Mobile, x.IdCardNo })
             .FirstOrDefaultAsync();
 
         return ApiResponse<object>.Ok(new { latest });

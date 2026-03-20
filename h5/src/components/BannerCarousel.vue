@@ -13,23 +13,49 @@ const props = defineProps<{
 
 const index = ref(0)
 let timer: number | undefined
+let mq: MediaQueryList | undefined
+const onMotionChange = () => start()
 
 function next() {
   if (!props.items.length) return
   index.value = (index.value + 1) % props.items.length
 }
 
-onMounted(() => {
+function canAutoPlay() {
+  if (typeof window === 'undefined') return false
+  mq = mq ?? window.matchMedia('(prefers-reduced-motion: reduce)')
+  return !mq.matches
+}
+
+function stop() {
+  if (timer) window.clearInterval(timer)
+  timer = undefined
+}
+
+function start() {
+  stop()
+  if (!props.items.length) return
+  if (!canAutoPlay()) return
   timer = window.setInterval(next, 3800)
+}
+
+onMounted(() => {
+  start()
+  const mql = (mq ?? window.matchMedia('(prefers-reduced-motion: reduce)')) as any
+  if (typeof mql.addEventListener === 'function') mql.addEventListener('change', onMotionChange)
+  else if (typeof mql.addListener === 'function') mql.addListener(onMotionChange)
 })
 
 onUnmounted(() => {
-  if (timer) window.clearInterval(timer)
+  stop()
+  const mql = mq as any
+  if (mql && typeof mql.removeEventListener === 'function') mql.removeEventListener('change', onMotionChange)
+  else if (mql && typeof mql.removeListener === 'function') mql.removeListener(onMotionChange)
 })
 </script>
 
 <template>
-  <div class="wrap">
+  <div class="wrap" @mouseenter="stop" @mouseleave="start" @focusin="stop" @focusout="start">
     <div
       class="track"
       :style="{
@@ -70,7 +96,7 @@ onUnmounted(() => {
 }
 .track {
   display: flex;
-  transition: transform 520ms cubic-bezier(0.2, 0.9, 0.2, 1);
+  transition: transform 460ms var(--ease-out);
 }
 .slide {
   position: relative;

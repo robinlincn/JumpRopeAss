@@ -29,7 +29,6 @@ export const menuTree: MenuNode[] = [
       { key: 'content_news', path: '/content/news', name: '资讯管理' },
       { key: 'content_banners', path: '/content/banners', name: 'Banner管理' },
       { key: 'content_about', path: '/content/about', name: '关于协会' },
-      { key: 'content_members', path: '/content/members', name: '会员单位' },
       { key: 'content_locals', path: '/content/locals', name: '地方协会' },
     ],
   },
@@ -38,8 +37,12 @@ export const menuTree: MenuNode[] = [
     name: '基础数据',
     icon: <ApartmentOutlined />,
     children: [
-      { key: 'data_orgs', path: '/data/orgs', name: '机构管理' },
-      { key: 'data_persons', path: '/data/persons', name: '人员管理' },
+      { key: 'data_members', path: '/data/members', name: '会员单位' },
+      { key: 'data_schools', path: '/data/schools', name: '学校管理' },
+      { key: 'data_judges', path: '/data/judges', name: '裁判员管理' },
+      { key: 'data_coaches', path: '/data/coaches', name: '教练员管理' },
+      { key: 'data_athletes', path: '/data/athletes', name: '运动员管理' },
+      { key: 'data_projects', path: '/data/projects', name: '比赛项目' },
     ],
   },
   {
@@ -64,7 +67,10 @@ export const menuTree: MenuNode[] = [
     key: 'cert',
     name: '证书管理',
     icon: <SafetyCertificateOutlined />,
-    children: [{ key: 'cert_list', path: '/cert/list', name: '证书列表' }],
+    children: [
+      { key: 'cert_list', path: '/cert/list', name: '证书列表' },
+      { key: 'cert_review', path: '/cert/review', name: '发证审核' },
+    ],
   },
   {
     key: 'identity',
@@ -76,7 +82,10 @@ export const menuTree: MenuNode[] = [
     key: 'security',
     name: '系统设置',
     icon: <SettingOutlined />,
-    children: [{ key: 'users', path: '/users', name: '账号与角色', icon: <TeamOutlined /> }],
+    children: [
+      { key: 'users', path: '/users', name: '账号与角色', icon: <TeamOutlined /> },
+      { key: 'settings', path: '/settings', name: '系统参数', icon: <SettingOutlined /> },
+    ],
   },
 ]
 

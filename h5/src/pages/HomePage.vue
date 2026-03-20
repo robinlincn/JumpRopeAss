@@ -1,40 +1,167 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import AppTabBar from '../components/AppTabBar.vue'
 import BannerCarousel from '../components/BannerCarousel.vue'
+import logoUrl from '../assets/logo.png'
+import { apiFetch } from '../lib/api'
+import { useAutoRefresh } from '../lib/useAutoRefresh'
 
 const router = useRouter()
 
 const quick = [
-  { label: '会员单位', path: '/org/members', icon: '/icon-grid.svg' },
-  { label: '地方协会', path: '/org/locals', icon: '/icon-grid.svg' },
-  { label: '关于协会', path: '/about', icon: '/icon-news.svg' },
-  { label: '新闻资讯', path: '/news', icon: '/icon-news.svg' },
+  { label: '会员单位', path: '/org/members', iconType: 'img', icon: '/icon-user.svg' },
+  { label: '地方协会', path: '/org/locals', iconType: 'sprite', icon: 'social-icon' },
+  { label: '关于协会', path: '/about', iconType: 'sprite', icon: 'documentation-icon' },
+  { label: '新闻资讯', path: '/news', iconType: 'img', icon: '/icon-news.svg' },
 ]
 
-const banners = [
-  {
-    src: '/banner-1.svg',
-    title: '校园跳绳公开赛 · 热血开赛',
-    subtitle: '多地联动，团体与个人项目齐开，报名、审核、缴费一站式完成。',
-  },
-  {
-    src: '/banner-2.svg',
-    title: '等级评定 · 专业认证',
-    subtitle: '标准化评定流程，后台审核留痕，电子证书随时可查。',
-  },
-  {
-    src: '/banner-3.svg',
-    title: '培训计划 · 提升教练力',
-    subtitle: '教练员继续教育与教学资源同步更新，带动更多学生跃动起来。',
-  },
-]
+type BannerItem = {
+  id: number
+  title: string
+  imageUrl?: string | null
+  linkType: number
+  linkValue?: string | null
+}
 
-const stats = [
-  { label: '裁判员', value: 266 },
-  { label: '评定学员', value: 20789 },
-  { label: '教练员', value: 366 },
-]
+const banners = ref<{ src: string; title: string; subtitle: string; linkType: number; linkValue?: string | null }[]>([])
+const stats = ref<{ judges: number; athletes: number; coaches: number; events: number } | null>(null)
+const statCards = computed(() => {
+  const s = stats.value
+  return [
+    { label: '裁判员', value: s?.judges ?? 0 },
+    { label: '运动员', value: s?.athletes ?? 0 },
+    { label: '教练员', value: s?.coaches ?? 0 },
+  ]
+})
+
+type EventItem = {
+  id: number
+  title: string
+  coverUrl?: string
+  eventDate?: string
+  location?: string
+}
+
+type NewsItem = {
+  id: number
+  title: string
+  publishAt?: string | null
+  viewCount: number
+  coverUrl?: string | null
+  contentType: string
+}
+
+const events = ref<EventItem[]>([])
+const news = ref<NewsItem[]>([])
+const loading = ref(false)
+const finished = ref(false)
+const sentinelEl = ref<HTMLDivElement | null>(null)
+let observer: IntersectionObserver | null = null
+let page = 1
+let pageSize = 5
+
+function resetList() {
+  page = 1
+  pageSize = 5
+  events.value = []
+  finished.value = false
+}
+
+async function fetchEvents() {
+  if (loading.value || finished.value) return
+  loading.value = true
+  try {
+    const url = `/api/v1/app/events?page=${page}&pageSize=${pageSize}&status=1`
+    const data = await apiFetch<any>(url)
+    const items: any[] = data.data?.items ?? []
+    if (items.length === 0) {
+      finished.value = true
+    } else {
+      events.value.push(
+        ...items.map((x) => ({
+          id: Number(x.id),
+          title: x.title,
+          coverUrl: x.coverUrl,
+          eventDate: x.eventDate ?? x.signupStartAt,
+          location: x.location,
+        })),
+      )
+      page += 1
+      pageSize = 10
+    }
+  } catch (e) {
+    finished.value = true
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchHomeBase() {
+  const [b, s, n] = await Promise.all([
+    apiFetch<any>('/api/v1/app/banners'),
+    apiFetch<any>('/api/v1/app/stats'),
+    apiFetch<any>('/api/v1/app/news?page=1&pageSize=3'),
+  ])
+  if (b.code === 0) {
+    banners.value = (b.data?.items ?? []).map((x: BannerItem) => ({
+      src: x.imageUrl || '/banner-1.svg',
+      title: x.title || '推荐',
+      subtitle: x.linkType === 1 ? '赛事推荐' : x.linkType === 2 ? '资讯推荐' : '快捷入口',
+      linkType: x.linkType,
+      linkValue: x.linkValue,
+    }))
+  }
+  if (s.code === 0) {
+    stats.value = {
+      judges: Number(s.data?.judges ?? 0),
+      athletes: Number(s.data?.athletes ?? 0),
+      coaches: Number(s.data?.coaches ?? 0),
+      events: Number(s.data?.events ?? 0),
+    }
+  }
+  if (n.code === 0) {
+    news.value = (n.data?.items ?? []).map((x: any) => ({
+      id: Number(x.id),
+      title: String(x.title),
+      publishAt: x.publishAt ?? null,
+      viewCount: Number(x.viewCount ?? 0),
+      coverUrl: x.coverUrl ?? null,
+      contentType: String(x.contentType ?? 'text'),
+    }))
+  }
+}
+
+function timeText(v?: string | null) {
+  if (!v) return '-'
+  return String(v).replace('T', ' ').slice(5, 16)
+}
+
+function viewText(n: number) {
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`
+  return String(n)
+}
+
+useAutoRefresh(async () => {
+  await fetchHomeBase()
+  resetList()
+  await fetchEvents()
+}, 30000)
+
+onMounted(() => {
+  observer = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        fetchEvents()
+      }
+    },
+    { rootMargin: '200px' },
+  )
+  if (sentinelEl.value) observer.observe(sentinelEl.value)
+})
+onBeforeUnmount(() => {
+  if (observer) observer.disconnect()
+})
 </script>
 
 <template>
@@ -46,7 +173,7 @@ const stats = [
       <div class="hero-left">
         <div class="brand">
           <div class="brand-logo-wrap">
-            <img class="brand-logo" src="/logo.svg" alt="" width="38" height="38" />
+            <img class="brand-logo" :src="logoUrl" alt="" width="38" height="38" />
           </div>
           <div>
             <div class="brand-name">湖南省学生跳绳协会</div>
@@ -59,17 +186,7 @@ const stats = [
           资讯、赛事、评定、培训与证书，一站式服务。支持运动员/家长/第一教练员报名与审核缴费闭环。
         </div>
 
-        <div class="hero-cta">
-          <button class="btn" type="button" @click="router.push('/events')">立即查看赛事</button>
-          <button class="btn btn-ghost" type="button" @click="router.push('/me')">进入个人中心</button>
-        </div>
-
-        <div class="hero-chips">
-          <span class="chip">报名审核</span>
-          <span class="chip">微信缴费</span>
-          <span class="chip">电子证书</span>
-          <span class="chip">留痕追溯</span>
-        </div>
+        
       </div>
     </section>
 
@@ -81,13 +198,18 @@ const stats = [
         type="button"
         @click="router.push(q.path)"
       >
-        <img :src="q.icon" alt="" width="28" height="28" />
+        <span class="quick-ico" aria-hidden="true">
+          <img v-if="q.iconType === 'img'" :src="q.icon" alt="" width="22" height="22" />
+          <svg v-else class="quick-sprite" width="22" height="22">
+            <use :href="`/icons.svg#${q.icon}`"></use>
+          </svg>
+        </span>
         <span>{{ q.label }}</span>
       </button>
     </section>
 
     <section class="stats">
-      <div v-for="s in stats" :key="s.label" class="stat card">
+      <div v-for="s in statCards" :key="s.label" class="stat card">
         <div class="stat-value">{{ s.value }}</div>
         <div class="stat-label">{{ s.label }}</div>
       </div>
@@ -95,40 +217,56 @@ const stats = [
 
     <section class="latest">
       <div class="section-head">
-        <div>
-          <div class="h-title">最新信息</div>
-          <div class="h-sub">及时掌握协会动态与活动进展</div>
+        <div class="h">
+          <div class="t">最新资讯</div>
+          <div class="s">来自后台资讯 · 实时同步</div>
         </div>
-        <button class="chip" type="button" @click="router.push('/news')">查看更多</button>
+        <button class="btn-reset more" type="button" @click="router.push('/news')">更多</button>
       </div>
+      <div class="news-mini">
+        <button
+          v-for="it in news"
+          :key="it.id"
+          class="mini card btn-reset pressable"
+          type="button"
+          @click="router.push(`/news/${it.id}`)"
+        >
+          <div class="mini-left">
+            <div class="mini-top">
+              <span class="chip">{{ it.contentType === 'video' ? '视频' : '图文' }}</span>
+              <span class="meta">{{ timeText(it.publishAt) }} · {{ viewText(it.viewCount) }}</span>
+            </div>
+            <div class="mini-title">{{ it.title }}</div>
+          </div>
+          <img class="mini-cover" :src="it.coverUrl || '/hero-jumprope.svg'" alt="" />
+        </button>
+      </div>
+    </section>
 
+    <section class="latest">
       <div class="latest-grid">
-        <div class="news-card card" @click="router.push('/news/1')">
+        <button
+          v-for="ev in events"
+          :key="ev.id"
+          class="news-card card btn-reset pressable"
+          type="button"
+          @click="router.push(`/events/${ev.id}`)"
+        >
           <div class="news-top">
-            <span class="chip">最新资讯</span>
-            <span class="meta">阅读量 1.9万 · 03/02 21:40</span>
+            <span class="chip">最新赛事</span>
+            <span class="meta">{{ ev.eventDate || '时间待定' }}</span>
           </div>
-          <div class="news-title">2026年湖南省学生跳绳等级评定活动圆满举行</div>
-          <div class="news-desc">全省多地同步开展，运动员热情高涨，现场气氛燃动。</div>
-          <div class="news-foot">
-            <img src="/icon-news.svg" alt="" width="24" height="24" />
-            <span>查看详情</span>
-          </div>
-        </div>
-
-        <div class="news-card glass" @click="router.push('/assessments')">
-          <div class="news-top">
-            <span class="chip">最新评定</span>
-            <span class="meta">评定日期 2026-03-02 · 报名已结束</span>
-          </div>
-          <div class="news-title">2026年3月，长沙市地区等级评定</div>
-          <div class="news-desc">评定通过后可生成电子证书，支持首次/补证定价。</div>
+          <div class="news-title">{{ ev.title }}</div>
+          <div class="news-desc">{{ ev.location || '地点待定' }}</div>
           <div class="news-foot">
             <img src="/icon-trophy.svg" alt="" width="24" height="24" />
             <span>查看活动</span>
           </div>
-        </div>
+        </button>
+        <div ref="sentinelEl" class="sentinel"></div>
       </div>
+      <div v-if="loading" class="loading">正在加载...</div>
+      <div v-else-if="finished" class="loading">已无更多</div>
     </section>
   </main>
 
@@ -137,7 +275,7 @@ const stats = [
 
 <style scoped>
 .page {
-  padding: 14px 12px 0;
+  padding: 14px 12px 88px;
 }
 
 .hero {
@@ -253,6 +391,38 @@ const stats = [
   color: rgba(15, 23, 42, 0.82);
   padding: 10px 6px;
   border-radius: 16px;
+  transition:
+    transform 160ms var(--ease-out),
+    background 180ms var(--ease-out),
+    border-color 180ms var(--ease-out);
+}
+.quick-item:active {
+  transform: translateY(1px) scale(0.99);
+}
+.quick-ico {
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  background:
+    radial-gradient(40px 40px at 20% 18%, rgb(var(--brand-cyan-rgb) / 0.22), transparent 70%),
+    radial-gradient(48px 48px at 88% 30%, rgb(var(--brand-blue-rgb) / 0.20), transparent 72%),
+    radial-gradient(44px 44px at 42% 92%, rgb(var(--brand-green-rgb) / 0.16), transparent 70%),
+    rgba(255, 255, 255, 0.58);
+  box-shadow: 0 16px 34px rgba(2, 6, 23, 0.10);
+}
+.quick-sprite {
+  display: block;
+}
+.quick-item:hover .quick-ico {
+  background:
+    radial-gradient(46px 46px at 20% 18%, rgb(var(--brand-cyan-rgb) / 0.24), transparent 70%),
+    radial-gradient(56px 56px at 88% 30%, rgb(var(--brand-blue-rgb) / 0.22), transparent 72%),
+    radial-gradient(50px 50px at 42% 92%, rgb(var(--brand-green-rgb) / 0.18), transparent 70%),
+    rgba(255, 255, 255, 0.70);
+  box-shadow: 0 18px 42px rgba(2, 6, 23, 0.12);
 }
 
 .stats {
@@ -260,6 +430,14 @@ const stats = [
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
+}
+.loading {
+  margin: 10px 12px;
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.55);
+}
+.sentinel {
+  height: 1px;
 }
 
 .stat {
@@ -294,6 +472,69 @@ const stats = [
   gap: 12px;
   margin-bottom: 10px;
 }
+.h {
+  min-width: 0;
+}
+.t {
+  font-weight: 950;
+  letter-spacing: -0.2px;
+}
+.s {
+  margin-top: 2px;
+  color: rgba(15, 23, 42, 0.56);
+  font-size: 12px;
+}
+.more {
+  font-weight: 900;
+  color: rgba(15, 23, 42, 0.62);
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.55);
+}
+.news-mini {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.mini {
+  padding: 12px;
+  text-align: left;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 86px;
+  gap: 12px;
+  align-items: center;
+}
+.mini-left {
+  min-width: 0;
+}
+.mini-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.mini-title {
+  margin-top: 8px;
+  font-weight: 950;
+  letter-spacing: -0.2px;
+  line-height: 1.3;
+  font-size: 14px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mini-cover {
+  width: 86px;
+  height: 62px;
+  border-radius: 14px;
+  object-fit: cover;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.6);
+}
 
 .latest-grid {
   display: grid;
@@ -302,6 +543,8 @@ const stats = [
 
 .news-card {
   padding: 14px;
+  text-align: left;
+  width: 100%;
 }
 
 .news-top {

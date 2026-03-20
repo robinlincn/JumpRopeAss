@@ -6,27 +6,37 @@ import NewsListPage from '../pages/NewsListPage.vue'
 import NewsDetailPage from '../pages/NewsDetailPage.vue'
 import MePage from '../pages/MePage.vue'
 import IdentitySubmitPage from '../pages/IdentitySubmitPage.vue'
-import PlaceholderPage from '../pages/PlaceholderPage.vue'
+import MembersPage from '../pages/MembersPage.vue'
+import LocalsPage from '../pages/LocalsPage.vue'
+import AboutPage from '../pages/AboutPage.vue'
+import AssessmentsPage from '../pages/AssessmentsPage.vue'
+import TrainingsPage from '../pages/TrainingsPage.vue'
+import MeProfilePage from '../pages/MeProfilePage.vue'
+import MeOrgPage from '../pages/MeOrgPage.vue'
+import MeActivityPage from '../pages/MeActivityPage.vue'
+import MeHomePage from '../pages/MeHomePage.vue'
+import CertVerifyPage from '../pages/CertVerifyPage.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', component: HomePage },
-    { path: '/org/members', component: PlaceholderPage, props: { title: '会员单位' } },
-    { path: '/org/locals', component: PlaceholderPage, props: { title: '地方协会' } },
-    { path: '/about', component: PlaceholderPage, props: { title: '关于协会' } },
+    { path: '/org/members', component: MembersPage },
+    { path: '/org/locals', component: LocalsPage },
+    { path: '/about', component: AboutPage },
     { path: '/events', component: EventsPage },
     { path: '/events/:id', component: EventDetailPage },
     { path: '/news', component: NewsListPage },
     { path: '/news/:id', component: NewsDetailPage },
-    { path: '/assessments', component: PlaceholderPage, props: { title: '评定' } },
-    { path: '/trainings', component: PlaceholderPage, props: { title: '培训' } },
+    { path: '/assessments', component: AssessmentsPage },
+    { path: '/trainings', component: TrainingsPage },
     { path: '/me', component: MePage },
     { path: '/me/identity', component: IdentitySubmitPage },
-    { path: '/me/profile', component: PlaceholderPage, props: { title: '信息录入' } },
-    { path: '/me/org', component: PlaceholderPage, props: { title: '绑定机构' } },
-    { path: '/me/activity', component: PlaceholderPage, props: { title: '我的活动' } },
-    { path: '/me/home', component: PlaceholderPage, props: { title: '我的主页' } },
+    { path: '/me/profile', component: MeProfilePage },
+    { path: '/me/org', component: MeOrgPage },
+    { path: '/me/activity', component: MeActivityPage },
+    { path: '/me/home', component: MeHomePage },
+    { path: '/cert/verify', component: CertVerifyPage },
   ],
 })
 

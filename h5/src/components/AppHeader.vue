@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 
+import logoUrl from '../assets/logo.png'
+
 const props = defineProps<{
   title: string
   showBack?: boolean
@@ -11,13 +13,13 @@ const router = useRouter()
 
 <template>
   <header class="header glass">
-    <button v-if="props.showBack" class="back" type="button" @click="router.back()">
+    <button v-if="props.showBack" class="back" type="button" aria-label="返回" @click="router.back()">
       <img src="/icon-back.svg" alt="" width="22" height="22" />
     </button>
     <div class="title">{{ props.title }}</div>
     <div class="right">
       <div class="logo-wrap">
-        <img class="logo" src="/logo.svg" alt="" width="22" height="22" />
+        <img class="logo" :src="logoUrl" alt="" width="22" height="22" />
       </div>
     </div>
   </header>
@@ -42,6 +44,14 @@ const router = useRouter()
   background: transparent;
   display: grid;
   place-items: center;
+  border-radius: 14px;
+  transition:
+    transform 160ms var(--ease-out),
+    background 180ms var(--ease-out);
+}
+.back:active {
+  transform: translateY(1px) scale(0.99);
+  background: rgba(255, 255, 255, 0.4);
 }
 .title {
   text-align: center;

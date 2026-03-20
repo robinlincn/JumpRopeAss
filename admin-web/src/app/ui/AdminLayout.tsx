@@ -11,6 +11,7 @@ import {
   Typography,
   theme,
 } from 'antd'
+import type { MenuProps } from 'antd'
 import {
   BellOutlined,
   LogoutOutlined,
@@ -23,12 +24,13 @@ import {
 } from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { clearToken } from '../../lib/auth'
+import logoUrl from '../../assets/logo.png'
 import { flattenMenu, menuTree, type MenuNode } from '../config/menu'
 import { useMemo, useState } from 'react'
 
 const { Header, Sider, Content } = Layout
 
-function toMenuItems(nodes: MenuNode[]): any[] {
+function toMenuItems(nodes: MenuNode[]): NonNullable<MenuProps['items']> {
   return nodes.map((n) => ({
     key: n.path ?? n.key,
     icon: n.icon,
@@ -106,7 +108,7 @@ export function AdminLayout() {
               }}
             >
               <img
-                src="/logo.svg"
+                src={logoUrl}
                 alt=""
                 width={30}
                 height={30}
@@ -237,7 +239,7 @@ export function AdminLayout() {
               }}
             >
               <img
-                src="/logo.svg"
+                src={logoUrl}
                 alt=""
                 width={26}
                 height={26}

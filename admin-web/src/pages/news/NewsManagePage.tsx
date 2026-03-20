@@ -3,7 +3,6 @@ import {
   Button,
   Card,
   Col,
-  DatePicker,
   Drawer,
   Form,
   Grid,
@@ -16,8 +15,10 @@ import {
   Tag,
   Typography,
   message,
+  Upload,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { Dayjs } from 'dayjs'
 import {
   DeleteOutlined,
   EditOutlined,
@@ -25,10 +26,26 @@ import {
   EyeOutlined,
   PlusOutlined,
   ReloadOutlined,
+  BoldOutlined, 
+  ItalicOutlined, 
+  UnderlineOutlined, 
+  AlignLeftOutlined, 
+  AlignCenterOutlined, 
+  AlignRightOutlined, 
+  UnorderedListOutlined, 
+  OrderedListOutlined, 
+  LinkOutlined, 
+  PictureOutlined, 
+  VideoCameraOutlined, 
+  UndoOutlined, 
+  RedoOutlined, 
+  FullscreenOutlined, 
+  FullscreenExitOutlined, 
+  TableOutlined
 } from '@ant-design/icons'
-import { useMemo, useState } from 'react'
+import { useState, useRef } from 'react'
 import { downloadCsv } from '../../lib/exportCsv'
-import { formatDateTime, randomDateWithinDays, randomInt } from '../../lib/mockData'
+import { apiFetch, apiUpload } from '../../lib/api'
 
 type NewsStatus = 0 | 1 | 2
 type NewsContentType = 'text' | 'video'
@@ -58,43 +75,84 @@ function contentTypeLabel(t: NewsContentType) {
   return t === 'video' ? '视频' : '图文'
 }
 
-function createMockRows(): NewsRow[] {
-  const titles = [
-    '2026年湖南省学生跳绳等级评定活动圆满举行',
-    '湖南省学生跳绳协会年度工作会议顺利召开',
-    '全省校园跳绳推广活动启动',
-    '关于开展教练员继续教育的通知',
-    '2026年春季等级评定报名开启',
-    '赛事回顾：公开赛精彩瞬间',
-  ]
-  return Array.from({ length: 38 }).map((_, i) => {
-    const id = 1000 + i
-    const dt = randomDateWithinDays(90)
-    const pub = randomInt(0, 10) > 2 ? formatDateTime(randomDateWithinDays(60)) : undefined
-    const status: NewsStatus = pub ? 1 : 0
-    const contentType: NewsContentType = randomInt(0, 10) > 7 ? 'video' : 'text'
-    return {
-      id,
-      title: titles[i % titles.length] + (i % 3 === 0 ? `（第${Math.floor(i / 3) + 1}期）` : ''),
-      contentType,
-      status: status === 1 && randomInt(0, 10) > 8 ? 2 : status,
-      viewCount: randomInt(200, 28000),
-      publishAt: pub,
-      updatedAt: formatDateTime(dt),
-      coverUrl: '',
-      summary: '用于演示的资讯摘要，后续接入后台富文本编辑与资源管理。',
-      contentHtml: '<p>这是一个演示内容。</p>',
-      videoUrl: contentType === 'video' ? 'https://example.com/video.mp4' : undefined,
-      tags: ['最新资讯'],
-    }
-  })
+function RichEditor({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
+  const editorRef = useRef<HTMLDivElement | null>(null)
+  const [fullscreen, setFullscreen] = useState(false)
+  const apply = (cmd: string, arg?: string) => {
+    editorRef.current?.focus()
+    document.execCommand(cmd, false, arg)
+    const v = editorRef.current?.innerHTML ?? ''
+    onChange?.(v)
+  }
+  return (
+    <Card style={{ borderRadius: 12 }} styles={{ body: { padding: 10 } }}>
+      <Space wrap style={{ marginBottom: 8 }}>
+        <Button size="small" icon={<BoldOutlined />} onClick={() => apply('bold')} />
+        <Button size="small" icon={<ItalicOutlined />} onClick={() => apply('italic')} />
+        <Button size="small" icon={<UnderlineOutlined />} onClick={() => apply('underline')} />
+        <Button size="small" icon={<AlignLeftOutlined />} onClick={() => apply('justifyLeft')} />
+        <Button size="small" icon={<AlignCenterOutlined />} onClick={() => apply('justifyCenter')} />
+        <Button size="small" icon={<AlignRightOutlined />} onClick={() => apply('justifyRight')} />
+        <Button size="small" icon={<UnorderedListOutlined />} onClick={() => apply('insertUnorderedList')} />
+        <Button size="small" icon={<OrderedListOutlined />} onClick={() => apply('insertOrderedList')} />
+        <Button size="small" icon={<LinkOutlined />} onClick={() => {
+          const url = window.prompt('输入链接地址') || ''
+          if (url) apply('createLink', url)
+        }} />
+        <Upload accept="image/*" maxCount={1} beforeUpload={() => false} showUploadList={false} onChange={(info) => {
+          const f = info.file.originFileObj as File | undefined
+          if (!f) return
+          if (f.size > 2 * 1024 * 1024) {
+            message.error('图片过大，请选择小于2MB的图片')
+            return
+          }
+          const fd = new FormData()
+          fd.append('file', f)
+          apiUpload<{ url: string }>('/api/v1/admin/uploads/image', fd).then((resp) => {
+            if (resp.code !== 0) {
+              message.error(resp.message || '上传失败')
+              return
+            }
+            apply('insertHTML', `<img src="${resp.data.url}" style="max-width:100%;border-radius:8px;" />`)
+          })
+        }}>
+          <Button size="small" icon={<PictureOutlined />} />
+        </Upload>
+        <Upload accept="video/*" maxCount={1} beforeUpload={() => false} showUploadList={false} onChange={(info) => {
+          const f = info.file.originFileObj as File | undefined
+          if (!f) return
+          const url = URL.createObjectURL(f)
+          apply('insertHTML', `<video src="${url}" controls style="max-width:100%;border-radius:8px;"></video>`)
+        }}>
+          <Button size="small" icon={<VideoCameraOutlined />} />
+        </Upload>
+        <Button size="small" icon={<TableOutlined />} onClick={() => apply('insertHTML', '<table style="width:100%;border-collapse:collapse;"><tr><th style="border:1px solid #ddd;padding:6px;">列1</th><th style="border:1px solid #ddd;padding:6px;">列2</th></tr><tr><td style="border:1px solid #ddd;padding:6px;">内容</td><td style="border:1px solid #ddd;padding:6px;">内容</td></tr></table>')} />
+        <Button size="small" icon={<UndoOutlined />} onClick={() => apply('undo')} />
+        <Button size="small" icon={<RedoOutlined />} onClick={() => apply('redo')} />
+        <Button size="small" icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />} onClick={() => setFullscreen((v) => !v)} />
+      </Space>
+      <div
+        ref={editorRef}
+        contentEditable
+        onInput={(e) => onChange?.((e.target as HTMLDivElement).innerHTML)}
+        style={{
+          minHeight: 200,
+          border: '1px solid #E5E7EB',
+          borderRadius: 8,
+          padding: 12,
+          ...(fullscreen ? { position: 'fixed', inset: 20, zIndex: 1000, background: '#fff', overflow: 'auto' } : {}),
+        }}
+        dangerouslySetInnerHTML={{ __html: value || '' }}
+      />
+    </Card>
+  )
 }
 
 type FilterValues = {
   keyword?: string
   contentType?: NewsContentType | 'all'
   status?: NewsStatus | 'all'
-  publishRange?: [any, any]
+  publishRange?: [Dayjs, Dayjs] | null
 }
 
 type EditValues = {
@@ -102,6 +160,7 @@ type EditValues = {
   contentType: NewsContentType
   status: NewsStatus
   summary?: string
+  contentHtml?: string
 }
 
 export function NewsManagePage() {
@@ -109,43 +168,58 @@ export function NewsManagePage() {
   const [form] = Form.useForm<FilterValues>()
   const [editForm] = Form.useForm<EditValues>()
 
-  const [rows, setRows] = useState<NewsRow[]>(() => createMockRows())
+  const [rows, setRows] = useState<NewsRow[]>([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editing, setEditing] = useState<NewsRow | null>(null)
 
-  const values = Form.useWatch([], form)
-
-  const filtered = useMemo(() => {
-    const v = (values ?? {}) as FilterValues
-    const kw = (v.keyword ?? '').trim()
-    const ct = v.contentType ?? 'all'
-    const st = v.status ?? 'all'
-    const range = v.publishRange
-
-    return rows.filter((r) => {
-      if (kw && !r.title.includes(kw)) return false
-      if (ct !== 'all' && r.contentType !== ct) return false
-      if (st !== 'all' && r.status !== st) return false
-      if (range?.length === 2 && range[0] && range[1]) {
-        if (!r.publishAt) return false
-        const start = typeof range[0]?.toDate === 'function' ? range[0].toDate() : new Date(range[0])
-        const end = typeof range[1]?.toDate === 'function' ? range[1].toDate() : new Date(range[1])
-        const pub = new Date(r.publishAt.replace(' ', 'T'))
-        if (Number.isNaN(pub.getTime())) return false
-        if (pub.getTime() < start.getTime() || pub.getTime() > end.getTime()) return false
+  const loadData = async (p = page, ps = pageSize) => {
+    setLoading(true)
+    try {
+      const query = new URLSearchParams()
+      query.append('page', String(p))
+      query.append('size', String(ps))
+      
+      const v = form.getFieldsValue()
+      if (v.keyword) query.append('keyword', v.keyword)
+      if (v.contentType && v.contentType !== 'all') query.append('contentType', v.contentType)
+      if (v.status !== undefined && v.status !== 'all') query.append('status', String(v.status))
+      
+      const res = await apiFetch<any>(`/api/v1/admin/news?${query.toString()}`)
+      if (res.code === 0) {
+        setRows(res.data.items.map((x: any) => ({
+          id: x.id,
+          title: x.title,
+          contentType: x.contentType,
+          status: x.status,
+          viewCount: x.viewCount,
+          publishAt: x.publishAt?.replace('T', ' '),
+          updatedAt: x.updatedAt?.replace('T', ' '),
+          coverUrl: x.coverUrl,
+          summary: x.summary,
+          contentHtml: x.contentHtml,
+          videoUrl: x.videoUrl,
+          tags: x.tags ? x.tags.split(',') : [],
+        })))
+        setTotal(res.data.total)
+      } else {
+        message.error(res.message || '加载失败')
       }
-      return true
-    })
-  }, [rows, values])
+    } catch (e) {
+      console.error(e)
+      message.error('加载失败')
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const paged = useMemo(() => {
-    const start = (page - 1) * pageSize
-    return filtered.slice(start, start + pageSize)
-  }, [filtered, page, pageSize])
+  useState(() => {
+    loadData()
+  })
 
   const columns: ColumnsType<NewsRow> = [
     {
@@ -204,16 +278,18 @@ export function NewsManagePage() {
         <Space size={6} wrap>
           <Button
             size="small"
+            shape="circle"
+            title="详情"
             icon={<EyeOutlined />}
             onClick={() => {
               setEditing(r)
               setDrawerOpen(true)
             }}
-          >
-            详情
-          </Button>
+          />
           <Button
             size="small"
+            shape="circle"
+            title="编辑"
             type="primary"
             icon={<EditOutlined />}
             onClick={() => {
@@ -223,29 +299,36 @@ export function NewsManagePage() {
                 contentType: r.contentType,
                 status: r.status,
                 summary: r.summary,
+                contentHtml: r.contentHtml,
               })
               setDrawerOpen(true)
             }}
-          >
-            编辑
-          </Button>
+          />
           <Button
             size="small"
+            shape="circle"
+            title="删除"
             danger
             icon={<DeleteOutlined />}
             onClick={() => {
               Modal.confirm({
-                title: '确认删除该资讯？',
+                title: '数据一旦删除不可恢复，您确定要删除吗？',
                 content: r.title,
                 okText: '删除',
                 cancelText: '取消',
                 okButtonProps: { danger: true },
-                onOk: () => setRows((prev) => prev.filter((x) => x.id !== r.id)),
+                onOk: async () => {
+                  const resp = await apiFetch(`/api/v1/admin/news/${r.id}`, { method: 'DELETE' })
+                  if (resp.code !== 0) {
+                    message.error(resp.message || '删除失败')
+                    return
+                  }
+                  message.success('已删除')
+                  loadData()
+                },
               })
             }}
-          >
-            删除
-          </Button>
+          />
         </Space>
       ),
     },
@@ -289,11 +372,6 @@ export function NewsManagePage() {
                 />
               </Form.Item>
             </Col>
-            <Col xs={24} sm={12} md={8} lg={7}>
-              <Form.Item name="publishRange" label="发布时间">
-                <DatePicker.RangePicker style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
             <Col xs={24}>
               <Space wrap>
                 <Button
@@ -302,7 +380,7 @@ export function NewsManagePage() {
                   onClick={() => {
                     setEditing(null)
                     editForm.resetFields()
-                    editForm.setFieldsValue({ contentType: 'text', status: 0, title: '' })
+                    editForm.setFieldsValue({ contentType: 'text', status: 0, title: '', summary: '', contentHtml: '' })
                     setDrawerOpen(true)
                   }}
                 >
@@ -312,10 +390,7 @@ export function NewsManagePage() {
                   icon={<ReloadOutlined />}
                   loading={loading}
                   onClick={async () => {
-                    setLoading(true)
-                    await new Promise((r) => setTimeout(r, 500))
-                    setRows(createMockRows())
-                    setLoading(false)
+                    await loadData()
                     message.success('已刷新')
                   }}
                 >
@@ -326,7 +401,7 @@ export function NewsManagePage() {
                   onClick={() => {
                     downloadCsv(
                       `news_${Date.now()}.csv`,
-                      filtered,
+                      rows,
                       [
                         { title: 'ID', value: (r) => r.id },
                         { title: '标题', value: (r) => r.title },
@@ -345,9 +420,13 @@ export function NewsManagePage() {
                   onClick={() => {
                     form.resetFields()
                     setPage(1)
+                    loadData(1, pageSize)
                   }}
                 >
                   重置
+                </Button>
+                <Button type="primary" ghost onClick={() => loadData(1, pageSize)}>
+                  查询
                 </Button>
               </Space>
             </Col>
@@ -359,16 +438,17 @@ export function NewsManagePage() {
         <Table
           rowKey="id"
           columns={columns}
-          dataSource={paged}
+          dataSource={rows}
           loading={loading}
           pagination={{
             current: page,
             pageSize,
-            total: filtered.length,
+            total: total,
             showSizeChanger: true,
             onChange: (p, ps) => {
               setPage(p)
               setPageSize(ps)
+              loadData(p, ps)
             },
           }}
           scroll={{ x: 1100 }}
@@ -387,46 +467,44 @@ export function NewsManagePage() {
               type="primary"
               icon={<EditOutlined />}
               onClick={async () => {
-                const v = await editForm.validateFields()
-                const now = formatDateTime(new Date())
+                try {
+                  const v = await editForm.validateFields()
+                  
+                  const dto = {
+                    title: v.title,
+                    contentType: v.contentType,
+                    status: v.status,
+                    summary: v.summary,
+                    contentHtml: v.contentHtml
+                  }
 
-                if (editing) {
-                  setRows((prev) =>
-                    prev.map((x) =>
-                      x.id === editing.id
-                        ? {
-                            ...x,
-                            title: v.title,
-                            contentType: v.contentType,
-                            status: v.status,
-                            summary: v.summary,
-                            publishAt: v.status === 1 ? (x.publishAt ?? now) : x.publishAt,
-                            updatedAt: now,
-                          }
-                        : x,
-                    ),
-                  )
-                } else {
-                  const id = Math.max(...rows.map((x) => x.id)) + 1
-                  setRows((prev) => [
-                    {
-                      id,
-                      title: v.title,
-                      contentType: v.contentType,
-                      status: v.status,
-                      viewCount: 0,
-                      publishAt: v.status === 1 ? now : undefined,
-                      updatedAt: now,
-                      summary: v.summary,
-                      contentHtml: '',
-                      tags: [],
-                    },
-                    ...prev,
-                  ])
+                  if (editing) {
+                    const resp = await apiFetch(`/api/v1/admin/news/${editing.id}`, {
+                      method: 'PUT',
+                      body: JSON.stringify(dto)
+                    })
+                    if (resp.code !== 0) {
+                      message.error(resp.message || '保存失败')
+                      return
+                    }
+                  } else {
+                    const resp = await apiFetch('/api/v1/admin/news', {
+                      method: 'POST',
+                      body: JSON.stringify(dto)
+                    })
+                    if (resp.code !== 0) {
+                      message.error(resp.message || '保存失败')
+                      return
+                    }
+                  }
+
+                  message.success('已保存')
+                  setDrawerOpen(false)
+                  loadData()
+                } catch (e) {
+                  console.error('Save failed', e)
+                  message.error('保存失败')
                 }
-
-                message.success('已保存')
-                setDrawerOpen(false)
               }}
             >
               保存
@@ -447,7 +525,7 @@ export function NewsManagePage() {
                 <Typography.Text type="secondary">浏览量：{editing.viewCount}</Typography.Text>
               </Space>
               <Typography.Text type="secondary">
-                发布时间：{editing.publishAt ?? '-'}　更新时间：{editing.updatedAt}
+                发布时间：{editing.publishAt ?? '-'} 更新时间：{editing.updatedAt}
               </Typography.Text>
             </Space>
           </Card>
@@ -491,6 +569,15 @@ export function NewsManagePage() {
           <Form.Item name="summary" label="摘要">
             <Input.TextArea placeholder="用于列表展示的摘要" autoSize={{ minRows: 3, maxRows: 6 }} />
           </Form.Item>
+          
+          <Card style={{ borderRadius: 14 }} styles={{ body: { padding: 14 } }}>
+            <Space direction="vertical" size={6} style={{ width: '100%' }}>
+              <Typography.Text strong>资讯正文详情</Typography.Text>
+              <Form.Item name="contentHtml" valuePropName="value" noStyle>
+                <RichEditor />
+              </Form.Item>
+            </Space>
+          </Card>
         </Form>
       </Drawer>
     </Space>

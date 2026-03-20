@@ -26,3 +26,11 @@ obj/
 .env.*
 !.env.example
 
+# Vercel (local)
+.vercel/
+
+# Local scratch
+TestMySql/
+test_mysql.cs
+Program.cs
+

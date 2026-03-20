@@ -1,11 +1,33 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '../components/AppHeader.vue'
+import { apiFetch } from '../lib/api'
+import { useAutoRefresh } from '../lib/useAutoRefresh'
+import logoUrl from '../assets/logo.png'
 
 const route = useRoute()
 const id = computed(() => String(route.params.id || ''))
-const isVideo = computed(() => id.value === '2')
+const loading = ref(false)
+const item = ref<any | null>(null)
+const isVideo = computed(() => String(item.value?.contentType ?? 'text') === 'video')
+
+function timeText(v?: string | null) {
+  if (!v) return '-'
+  return String(v).replace('T', ' ').slice(0, 16)
+}
+
+async function refresh() {
+  loading.value = true
+  try {
+    const res = await apiFetch<any>(`/api/v1/app/news/${id.value}`)
+    if (res.code === 0) item.value = res.data
+  } finally {
+    loading.value = false
+  }
+}
+
+useAutoRefresh(refresh)
 </script>
 
 <template>
@@ -13,54 +35,62 @@ const isVideo = computed(() => id.value === '2')
 
   <main class="app-container page page-pad">
     <div v-if="isVideo" class="video glass">
-      <div class="video-mask">
-        <div class="video-chip chip">
-          <img src="/icon-news.svg" alt="" width="18" height="18" />
-          <span>视频资讯</span>
-        </div>
-        <div class="video-text">视频区域（示例）</div>
+      <div class="video-chip chip">
+        <img src="/icon-news.svg" alt="" width="18" height="18" />
+        <span>视频资讯</span>
       </div>
+      <video v-if="item?.videoUrl" class="video-el" :src="item.videoUrl" controls playsinline></video>
+      <div v-else class="video-mask">
+        <div class="video-text">暂无视频地址</div>
+      </div>
+    </div>
+    <div v-else-if="item?.coverUrl" class="cover glass">
+      <img :src="item.coverUrl" alt="" />
     </div>
 
     <div class="title">
-      {{ isVideo ? '2026年湖南省学生跳绳等级评定：郴州站圆满举行' : '近万名学生参与竞技！2025年度回望' }}
+      {{ item?.title || (loading ? '加载中…' : '资讯详情') }}
     </div>
     <div class="meta">
       <span class="chip">
-        <img class="logo" src="/logo.svg" alt="" width="16" height="16" />
+        <img class="logo" :src="logoUrl" alt="" width="16" height="16" />
         <span>湖南跳绳</span>
       </span>
-      <span class="chip">2026-01-13 16:21</span>
-      <span class="chip">湖南</span>
+      <span class="chip">{{ timeText(item?.publishAt) }}</span>
+      <span class="chip">浏览 {{ Number(item?.viewCount ?? 0) }}</span>
     </div>
 
     <div class="content card card-pad">
-      <p>
-        本页面用于 H5 阶段验证资讯详情的排版与“图文/视频”两种内容形态。后续接入后台发布的 HTML 内容与视频地址。
-      </p>
-      <p>
-        重点：标题、时间、来源、正文富文本、可选视频、图片自适应、长内容滚动表现。
-      </p>
-      <div class="img glass">
-        <img src="/hero-jumprope.svg" alt="" />
-        <div class="img-label chip">
-          <img src="/icon-trophy.svg" alt="" width="18" height="18" />
-          <span>活动海报</span>
-        </div>
-      </div>
-      <p>
-        这里展示更多正文段落……这里展示更多正文段落……这里展示更多正文段落……这里展示更多正文段落……
-      </p>
+      <div v-if="item?.summary" class="summary">{{ item.summary }}</div>
+      <div v-if="item?.contentHtml" class="html" v-html="item.contentHtml"></div>
+      <div v-else class="empty">{{ loading ? '加载中…' : '暂无内容' }}</div>
     </div>
   </main>
 </template>
 
 <style scoped>
+.cover {
+  height: 210px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  position: relative;
+}
+.cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.92;
+}
 .video {
   height: 210px;
   overflow: hidden;
   margin-bottom: 12px;
   position: relative;
+}
+.video-el {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .video-mask {
   height: 100%;
@@ -101,25 +131,26 @@ const isVideo = computed(() => id.value === '2')
   line-height: 1.75;
   font-size: 14px;
 }
-.img {
-  margin: 12px 0;
-  height: 160px;
-  overflow: hidden;
-  position: relative;
+.summary {
+  color: rgba(15, 23, 42, 0.72);
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.55);
 }
-.img img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.9;
+.html :deep(img) {
+  max-width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
 }
-.img-label {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  background: rgba(255, 255, 255, 0.62);
-  border-color: rgba(15, 23, 42, 0.10);
-  color: rgba(15, 23, 42, 0.78);
+.html :deep(p) {
+  margin: 0 0 12px;
+}
+.empty {
+  color: rgba(15, 23, 42, 0.62);
+  font-size: 13px;
 }
 .logo {
   filter: drop-shadow(0 10px 16px rgba(2, 6, 23, 0.18));

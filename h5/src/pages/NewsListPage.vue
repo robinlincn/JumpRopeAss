@@ -1,15 +1,95 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import AppHeader from '../components/AppHeader.vue'
 import AppTabBar from '../components/AppTabBar.vue'
+import { apiFetch } from '../lib/api'
+import { useAutoRefresh } from '../lib/useAutoRefresh'
 
 const router = useRouter()
 
-const items = [
-  { id: '1', title: '2026年湖南省学生跳绳等级评定活动圆满举行', views: '1.9万', time: '03/02 21:40' },
-  { id: '2', title: '2026年湖南省学生跳绳等级评定：湘潭站', views: '1.3万', time: '02/09 14:25' },
-  { id: '3', title: '怀化市学生跳绳协会2025年年会圆满落幕', views: '1.4万', time: '01/28 09:45' },
-]
+type NewsItem = {
+  id: number
+  title: string
+  coverUrl?: string | null
+  summary?: string | null
+  publishAt?: string | null
+  viewCount: number
+  contentType: string
+}
+
+const items = ref<NewsItem[]>([])
+const loading = ref(false)
+const finished = ref(false)
+const sentinelEl = ref<HTMLDivElement | null>(null)
+let observer: IntersectionObserver | null = null
+let page = 1
+const pageSize = 10
+
+function reset() {
+  page = 1
+  items.value = []
+  finished.value = false
+}
+
+function timeText(v?: string | null) {
+  if (!v) return '-'
+  const s = String(v).replace('T', ' ')
+  return s.slice(5, 16)
+}
+
+function viewText(n: number) {
+  if (n >= 10000) return `${(n / 10000).toFixed(1)}万`
+  return String(n)
+}
+
+async function fetchMore() {
+  if (loading.value || finished.value) return
+  loading.value = true
+  try {
+    const res = await apiFetch<any>(`/api/v1/app/news?page=${page}&pageSize=${pageSize}`)
+    if (res.code !== 0) return
+    const list: any[] = res.data?.items ?? []
+    if (!list.length) {
+      finished.value = true
+      return
+    }
+    items.value.push(
+      ...list.map((x) => ({
+        id: Number(x.id),
+        title: String(x.title),
+        coverUrl: x.coverUrl ?? null,
+        summary: x.summary ?? null,
+        publishAt: x.publishAt ?? null,
+        viewCount: Number(x.viewCount ?? 0),
+        contentType: String(x.contentType ?? 'text'),
+      })),
+    )
+    page += 1
+  } finally {
+    loading.value = false
+  }
+}
+
+useAutoRefresh(async () => {
+  reset()
+  await fetchMore()
+}, 30000)
+
+observer = new IntersectionObserver(
+  (entries) => {
+    if (entries.some((e) => e.isIntersecting)) fetchMore()
+  },
+  { rootMargin: '200px' },
+)
+
+onMounted(() => {
+  if (sentinelEl.value) observer?.observe(sentinelEl.value)
+})
+
+onBeforeUnmount(() => {
+  if (observer) observer.disconnect()
+})
 </script>
 
 <template>
@@ -17,34 +97,52 @@ const items = [
 
   <main class="app-container page page-pad">
     <div class="list">
-      <div v-for="it in items" :key="it.id" class="item glass" @click="router.push(`/news/${it.id}`)">
+      <button
+        v-for="it in items"
+        :key="it.id"
+        type="button"
+        class="item glass btn-reset pressable"
+        @click="router.push(`/news/${it.id}`)"
+      >
         <div class="cover">
-          <img src="/hero-jumprope.svg" alt="" />
+          <img :src="it.coverUrl || '/hero-jumprope.svg'" alt="" />
         </div>
         <div class="body">
           <div class="row">
             <span class="chip tag">
               <img src="/icon-news.svg" alt="" width="18" height="18" />
-              <span>最新资讯</span>
+              <span>{{ it.contentType === 'video' ? '视频' : '资讯' }}</span>
             </span>
             <div class="title">{{ it.title }}</div>
           </div>
           <div class="meta">
             <span class="meta-left">
               <img src="/icon-grid.svg" alt="" width="16" height="16" />
-              <span>{{ it.views }}</span>
+              <span>{{ viewText(it.viewCount) }}</span>
             </span>
-            <span>{{ it.time }}</span>
+            <span>{{ timeText(it.publishAt) }}</span>
           </div>
         </div>
-      </div>
+      </button>
+      <div ref="sentinelEl" class="sentinel"></div>
     </div>
+    <div v-if="loading" class="loading">正在加载...</div>
+    <div v-else-if="finished" class="loading">已无更多</div>
   </main>
 
   <AppTabBar />
 </template>
 
 <style scoped>
+.sentinel {
+  height: 1px;
+}
+.loading {
+  margin-top: 12px;
+  text-align: center;
+  color: rgba(15, 23, 42, 0.6);
+  font-size: 12px;
+}
 .list {
   display: grid;
   gap: 12px;
@@ -54,6 +152,7 @@ const items = [
   grid-template-columns: 104px 1fr;
   gap: 12px;
   padding: 12px;
+  text-align: left;
 }
 .cover {
   width: 104px;

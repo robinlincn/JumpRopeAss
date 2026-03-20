@@ -3,50 +3,91 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '../components/AppHeader.vue'
 import AppTabBar from '../components/AppTabBar.vue'
+import { apiFetch } from '../lib/api'
+import { useAutoRefresh } from '../lib/useAutoRefresh'
 
 type Item = {
-  id: string
+  id: number
   title: string
-  date: string
+  dateText: string
+  locationText: string
   statusLabel: string
-  status: 'all' | 'not_started' | 'signup' | 'soon' | 'running' | 'ended'
+  statusKey: 'all' | 'not_started' | 'signup' | 'ended'
 }
+
+const { defaultType, hideTabs, title } = defineProps<{ defaultType?: number; hideTabs?: boolean; title?: string }>()
 
 const router = useRouter()
 const tabs = [
   { key: 'all', label: '全部' },
   { key: 'not_started', label: '未开始' },
   { key: 'signup', label: '报名中' },
-  { key: 'soon', label: '即将开始' },
-  { key: 'running', label: '进行中' },
   { key: 'ended', label: '已结束' },
 ] as const
 
 const active = ref<(typeof tabs)[number]['key']>('all')
 
-const items = ref<Item[]>([
-  { id: '1', title: '2025年湖南省学生跳绳公开赛：益阳站报名', date: '2025-07-28', statusLabel: '比赛已结束', status: 'ended' },
-  { id: '2', title: '2025年湖南省学生跳绳公开赛：湘潭站报名', date: '2025-07-05', statusLabel: '比赛已结束', status: 'ended' },
-  { id: '3', title: '2025年湖南省学生跳绳公开赛：张家界站报名', date: '2025-10-07', statusLabel: '比赛已结束', status: 'ended' },
-  { id: '4', title: '2025年湖南省学生跳绳酷跑军赛', date: '2025-10-18', statusLabel: '比赛已结束', status: 'ended' },
-])
+const items = ref<Item[]>([])
+
+const eventType = computed(() => defaultType ?? 1)
+
+function toDateText(v?: string | null) {
+  if (!v) return '-'
+  return String(v).slice(0, 10)
+}
+
+function statusKeyOf(x: any): Item['statusKey'] {
+  const now = Date.now()
+  const start = x.signupStartAt ? Date.parse(x.signupStartAt) : NaN
+  const end = x.signupEndAt ? Date.parse(x.signupEndAt) : NaN
+  if (!Number.isNaN(start) && now < start) return 'not_started'
+  if (!Number.isNaN(start) && !Number.isNaN(end) && now >= start && now <= end) return 'signup'
+  if (!Number.isNaN(end) && now > end) return 'ended'
+  return x.status === 1 ? 'signup' : 'ended'
+}
+
+function statusLabelOf(key: Item['statusKey']) {
+  if (key === 'not_started') return '报名未开始'
+  if (key === 'signup') return '报名进行中'
+  if (key === 'ended') return '报名已结束'
+  return '全部'
+}
+
+async function refresh() {
+  const res = await apiFetch<any>(`/api/v1/app/events?page=1&pageSize=50&type=${eventType.value}&status=1`)
+  if (res.code !== 0) return
+  const list: any[] = res.data?.items ?? []
+  items.value = list.map((x) => {
+    const key = statusKeyOf(x)
+    return {
+      id: Number(x.id),
+      title: String(x.title),
+      dateText: toDateText(x.eventDate ?? x.eventStartAt ?? x.signupStartAt),
+      locationText: x.location || '-',
+      statusKey: key,
+      statusLabel: statusLabelOf(key),
+    }
+  })
+}
+
+useAutoRefresh(refresh, 30000)
 
 const filtered = computed(() => {
   if (active.value === 'all') return items.value
-  return items.value.filter((x) => x.status === active.value)
+  return items.value.filter((x) => x.statusKey === active.value)
 })
 </script>
 
 <template>
-  <AppHeader title="赛事列表" />
+  <AppHeader :title="title || (eventType === 1 ? '赛事列表' : eventType === 2 ? '评定列表' : '培训列表')" :showBack="true" />
 
   <main class="app-container page page-pad">
-    <div class="tabs glass">
+    <div v-if="!hideTabs" class="tabs glass">
       <button
         v-for="t in tabs"
         :key="t.key"
         type="button"
-        class="tab"
+        class="tab pressable"
         :class="{ active: active === t.key }"
         @click="active = t.key"
       >
@@ -55,10 +96,11 @@ const filtered = computed(() => {
     </div>
 
     <div class="list">
-      <div
+      <button
         v-for="it in filtered"
         :key="it.id"
-        class="item card"
+        type="button"
+        class="item card btn-reset pressable"
         @click="router.push(`/events/${it.id}`)"
       >
         <div class="badge">{{ it.statusLabel }}</div>
@@ -66,12 +108,12 @@ const filtered = computed(() => {
           <img class="medal" src="/icon-trophy.svg" alt="" width="22" height="22" />
           <div class="title">{{ it.title }}</div>
         </div>
-        <div class="meta">比赛日期：{{ it.date }}</div>
-      </div>
+        <div class="meta">比赛日期：{{ it.dateText }} · {{ it.locationText }}</div>
+      </button>
     </div>
   </main>
 
-  <AppTabBar />
+  <AppTabBar v-if="!hideTabs" />
 </template>
 
 <style scoped>
@@ -107,6 +149,8 @@ const filtered = computed(() => {
 }
 .item {
   padding: 12px;
+  text-align: left;
+  width: 100%;
 }
 .badge {
   display: inline-block;

@@ -22,10 +22,11 @@ import {
   CloseOutlined,
   ExportOutlined,
   ReloadOutlined,
+  EyeOutlined,
 } from '@ant-design/icons'
-import { useMemo, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { downloadCsv } from '../../lib/exportCsv'
-import { formatDateTime, randomDateWithinDays, randomInt } from '../../lib/mockData'
+import { apiFetch } from '../../lib/api'
 
 type EntryStatus = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
 type EnrollChannel = 1 | 2 | 3
@@ -33,8 +34,11 @@ type EnrollChannel = 1 | 2 | 3
 type EntryRow = {
   id: number
   eventId: number
+  eventTitle?: string | null
   groupId: number
+  groupName?: string | null
   athletePersonId: number
+  athleteName?: string | null
   enrollChannel: EnrollChannel
   enrollUserId: number
   status: EntryStatus
@@ -82,25 +86,6 @@ function channelLabel(c: EnrollChannel) {
   return '教练(第一教练)'
 }
 
-function createMockRows(): EntryRow[] {
-  return Array.from({ length: 55 }).map((_, i) => {
-    const dt = randomDateWithinDays(45)
-    const status: EntryStatus = (i % 7 === 0 ? 1 : i % 9 === 0 ? 2 : 0) as EntryStatus
-    return {
-      id: 50000 + i,
-      eventId: 1000 + (i % 6),
-      groupId: 200 + (i % 4),
-      athletePersonId: 90000 + randomInt(1, 600),
-      enrollChannel: ((i % 3) + 1) as EnrollChannel,
-      enrollUserId: 70000 + randomInt(1, 300),
-      status,
-      auditRemark: status === 1 ? '资料不完整，请补充学校信息' : undefined,
-      payOrderId: status >= 3 ? 80000 + i : undefined,
-      createdAt: formatDateTime(dt),
-    }
-  })
-}
-
 type FilterValues = {
   eventId?: string
   status?: EntryStatus | 'all'
@@ -111,47 +96,87 @@ type FilterValues = {
 export function EntriesReviewPage() {
   const screens = Grid.useBreakpoint()
   const [form] = Form.useForm<FilterValues>()
-  const [rows, setRows] = useState<EntryRow[]>(() => createMockRows())
+  const [rows, setRows] = useState<EntryRow[]>([])
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [total, setTotal] = useState(0)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [current, setCurrent] = useState<EntryRow | null>(null)
 
-  const values = Form.useWatch([], form)
-
-  const filtered = useMemo(() => {
-    const v = (values ?? {}) as FilterValues
-    const kw = (v.keyword ?? '').trim()
-    const st = v.status ?? 'all'
-    const ch = v.enrollChannel ?? 'all'
-    const eventId = (v.eventId ?? '').trim()
-
-    return rows.filter((r) => {
-      if (eventId && String(r.eventId) !== eventId) return false
-      if (st !== 'all' && r.status !== st) return false
-      if (ch !== 'all' && r.enrollChannel !== ch) return false
-      if (kw) {
-        const hay = `${r.id} ${r.athletePersonId} ${r.enrollUserId}`
-        if (!hay.includes(kw)) return false
+  const loadData = async (p = page, ps = pageSize) => {
+    setLoading(true)
+    try {
+      const v = form.getFieldsValue() as FilterValues
+      const qs = new URLSearchParams()
+      const eventId = (v.eventId ?? '').trim()
+      const keyword = (v.keyword ?? '').trim()
+      const status = v.status ?? 'all'
+      const enrollChannel = v.enrollChannel ?? 'all'
+      if (eventId) qs.set('eventId', eventId)
+      if (keyword) qs.set('keyword', keyword)
+      if (status !== 'all') qs.set('status', String(status))
+      if (enrollChannel !== 'all') qs.set('enrollChannel', String(enrollChannel))
+      qs.set('page', String(p))
+      qs.set('pageSize', String(ps))
+      const res = await apiFetch<any>(`/api/v1/admin/entries?${qs.toString()}`)
+      if (res.code !== 0) {
+        message.error(res.message || '加载失败')
+        return
       }
-      return true
-    })
-  }, [rows, values])
+      setTotal(res.data?.total ?? 0)
+      const items = (res.data?.items ?? []).map((x: any) => ({
+        id: Number(x.id),
+        eventId: Number(x.eventId),
+        eventTitle: x.eventTitle ?? null,
+        groupId: Number(x.groupId),
+        groupName: x.groupName ?? null,
+        athletePersonId: Number(x.athletePersonId),
+        athleteName: x.athleteName ?? null,
+        enrollChannel: Number(x.enrollChannel) as EnrollChannel,
+        enrollUserId: Number(x.enrollUserId),
+        status: Number(x.status) as EntryStatus,
+        auditRemark: x.auditRemark ?? undefined,
+        payOrderId: x.payOrderId != null ? Number(x.payOrderId) : undefined,
+        createdAt: String(x.createdAt ?? '').replace('T', ' '),
+      }))
+      setRows(items)
+    } catch (e) {
+      console.error(e)
+      message.error('加载失败')
+    } finally {
+      setLoading(false)
+    }
+  }
 
-  const paged = useMemo(() => {
-    const start = (page - 1) * pageSize
-    return filtered.slice(start, start + pageSize)
-  }, [filtered, page, pageSize])
+  useEffect(() => {
+    loadData()
+  }, [])
 
   const approve = (r: EntryRow) => {
     if (r.status !== 0) {
       message.warning('当前状态不可审核通过')
       return
     }
-    setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: 2, auditRemark: undefined } : x)))
-    message.success('已通过，进入待缴费')
+    Modal.confirm({
+      title: '通过报名审核',
+      okText: '确认通过',
+      cancelText: '取消',
+      content: '通过后进入待缴费状态',
+      onOk: async () => {
+        const res = await apiFetch<any>(`/api/v1/admin/entries/${r.id}/approve`, {
+          method: 'POST',
+          body: JSON.stringify({ remark: null }),
+        })
+        if (res.code !== 0) {
+          message.error(res.message || '操作失败')
+          return
+        }
+        message.success('已通过，进入待缴费')
+        await loadData()
+      },
+    })
   }
 
   const reject = (r: EntryRow) => {
@@ -183,17 +208,25 @@ export function EntriesReviewPage() {
           message.error('请输入驳回原因')
           throw new Error('reason required')
         }
-        setRows((prev) => prev.map((x) => (x.id === r.id ? { ...x, status: 1, auditRemark: reason } : x)))
+        const res = await apiFetch<any>(`/api/v1/admin/entries/${r.id}/reject`, {
+          method: 'POST',
+          body: JSON.stringify({ reason }),
+        })
+        if (res.code !== 0) {
+          message.error(res.message || '操作失败')
+          return
+        }
         message.success('已驳回')
+        await loadData()
       },
     })
   }
 
   const columns: ColumnsType<EntryRow> = [
     { title: '报名ID', dataIndex: 'id', width: 120, fixed: screens.lg ? 'left' : undefined },
-    { title: '活动ID', dataIndex: 'eventId', width: 100 },
-    { title: '组别ID', dataIndex: 'groupId', width: 100 },
-    { title: '运动员ID', dataIndex: 'athletePersonId', width: 120 },
+    { title: '活动', dataIndex: 'eventTitle', width: 260, render: (_, r) => r.eventTitle ?? '-' },
+    { title: '组别', dataIndex: 'groupName', width: 200, render: (_, r) => r.groupName ?? '-' },
+    { title: '运动员', dataIndex: 'athleteName', width: 160, render: (_, r) => r.athleteName ?? '-' },
     {
       title: '报名方式',
       dataIndex: 'enrollChannel',
@@ -211,19 +244,16 @@ export function EntriesReviewPage() {
         <Space size={6} wrap>
           <Button
             size="small"
+            shape="circle"
+            title="详情"
+            icon={<EyeOutlined />}
             onClick={() => {
               setCurrent(r)
               setDrawerOpen(true)
             }}
-          >
-            详情
-          </Button>
-          <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => approve(r)}>
-            通过
-          </Button>
-          <Button size="small" danger icon={<CloseOutlined />} onClick={() => reject(r)}>
-            驳回
-          </Button>
+          />
+          <Button size="small" shape="circle" title="通过" type="primary" icon={<CheckOutlined />} onClick={() => approve(r)} />
+          <Button size="small" shape="circle" title="驳回" danger icon={<CloseOutlined />} onClick={() => reject(r)} />
         </Space>
       ),
     },
@@ -236,7 +266,10 @@ export function EntriesReviewPage() {
           form={form}
           layout="vertical"
           initialValues={{ status: 'all', enrollChannel: 'all' }}
-          onValuesChange={() => setPage(1)}
+          onValuesChange={() => {
+            setPage(1)
+            loadData(1, pageSize)
+          }}
         >
           <Row gutter={[16, 8]}>
             <Col xs={24} sm={12} md={8} lg={6}>
@@ -280,10 +313,7 @@ export function EntriesReviewPage() {
                   icon={<ReloadOutlined />}
                   loading={loading}
                   onClick={async () => {
-                    setLoading(true)
-                    await new Promise((r) => setTimeout(r, 450))
-                    setRows(createMockRows())
-                    setLoading(false)
+                    await loadData()
                     message.success('已刷新')
                   }}
                 >
@@ -294,12 +324,12 @@ export function EntriesReviewPage() {
                   onClick={() => {
                     downloadCsv(
                       `entries_${Date.now()}.csv`,
-                      filtered,
+                      rows,
                       [
                         { title: '报名ID', value: (r) => r.id },
-                        { title: '活动ID', value: (r) => r.eventId },
-                        { title: '组别ID', value: (r) => r.groupId },
-                        { title: '运动员ID', value: (r) => r.athletePersonId },
+                        { title: '活动', value: (r) => r.eventTitle ?? '' },
+                        { title: '组别', value: (r) => r.groupName ?? '' },
+                        { title: '运动员', value: (r) => r.athleteName ?? '' },
                         { title: '报名方式', value: (r) => channelLabel(r.enrollChannel) },
                         { title: '状态', value: (r) => statusText(r.status) },
                         { title: '提交时间', value: (r) => r.createdAt },
@@ -309,7 +339,15 @@ export function EntriesReviewPage() {
                 >
                   导出
                 </Button>
-                <Button onClick={() => form.resetFields()}>重置</Button>
+                <Button
+                  onClick={() => {
+                    form.resetFields()
+                    setPage(1)
+                    loadData(1, pageSize)
+                  }}
+                >
+                  重置
+                </Button>
                 <Typography.Text type="secondary">待审核：{rows.filter((x) => x.status === 0).length}</Typography.Text>
               </Space>
             </Col>
@@ -321,16 +359,17 @@ export function EntriesReviewPage() {
         <Table
           rowKey="id"
           columns={columns}
-          dataSource={paged}
+          dataSource={rows}
           loading={loading}
           pagination={{
             current: page,
             pageSize,
-            total: filtered.length,
+            total,
             showSizeChanger: true,
             onChange: (p, ps) => {
               setPage(p)
               setPageSize(ps)
+              loadData(p, ps)
             },
           }}
           scroll={{ x: 1200 }}
@@ -361,9 +400,9 @@ export function EntriesReviewPage() {
             <Card style={{ borderRadius: 16 }} styles={{ body: { padding: 16 } }}>
               <Descriptions column={1} size="small" bordered>
                 <Descriptions.Item label="报名ID">{current.id}</Descriptions.Item>
-                <Descriptions.Item label="活动ID">{current.eventId}</Descriptions.Item>
-                <Descriptions.Item label="组别ID">{current.groupId}</Descriptions.Item>
-                <Descriptions.Item label="运动员ID">{current.athletePersonId}</Descriptions.Item>
+                <Descriptions.Item label="活动">{current.eventTitle ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="组别">{current.groupName ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label="运动员">{current.athleteName ?? '-'}</Descriptions.Item>
                 <Descriptions.Item label="报名方式">{channelLabel(current.enrollChannel)}</Descriptions.Item>
                 <Descriptions.Item label="状态">{statusTag(current.status)}</Descriptions.Item>
                 <Descriptions.Item label="驳回原因">{current.auditRemark ?? '-'}</Descriptions.Item>

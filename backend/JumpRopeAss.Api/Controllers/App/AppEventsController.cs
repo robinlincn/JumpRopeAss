@@ -32,8 +32,17 @@ public sealed class AppEventsController : ControllerBase
             eventType = x.EventType,
             title = x.Title,
             coverUrl = x.CoverUrl,
+            logoUrl = x.LogoUrl,
+            bannerUrl = x.BannerUrl,
+            slogan = x.Slogan,
+            hostOrg = x.HostOrg,
+            coOrgs = x.CoOrgs,
+            contacts = x.Contacts,
+            projects = x.Projects,
             signupStartAt = x.SignupStartAt,
             signupEndAt = x.SignupEndAt,
+            eventStartAt = x.EventStartAt,
+            eventEndAt = x.EventEndAt,
             eventDate = x.EventDate,
             location = x.Location,
             status = x.Status,
@@ -42,11 +51,11 @@ public sealed class AppEventsController : ControllerBase
         return ApiResponse<object>.Ok(new { page, pageSize, total, items });
     }
 
-    [HttpGet("{id:ulong}")]
-    public async Task<ApiResponse<object>> Detail([FromRoute] ulong id)
+    [HttpGet("{id:long}")]
+    public async Task<ApiResponse<object>> Detail([FromRoute] long id)
     {
         var item = await _db.Events.AsNoTracking()
-            .Where(x => x.Id == id)
+            .Where(x => x.Id == (ulong)id)
             .Select(x => new
             {
                 id = x.Id,
@@ -54,12 +63,23 @@ public sealed class AppEventsController : ControllerBase
                 signupScope = x.SignupScope,
                 title = x.Title,
                 coverUrl = x.CoverUrl,
+                logoUrl = x.LogoUrl,
+                bannerUrl = x.BannerUrl,
+                slogan = x.Slogan,
+                hostOrg = x.HostOrg,
+                coOrgs = x.CoOrgs,
+                contacts = x.Contacts,
+                projects = x.Projects,
                 signupStartAt = x.SignupStartAt,
                 signupEndAt = x.SignupEndAt,
+                eventStartAt = x.EventStartAt,
+                eventEndAt = x.EventEndAt,
                 eventDate = x.EventDate,
                 location = x.Location,
                 descriptionHtml = x.DescriptionHtml,
                 status = x.Status,
+                groupCount = _db.EventGroups.Count(g => g.EventId == x.Id),
+                entryCount = _db.EventEntries.Count(e => e.EventId == x.Id),
             })
             .FirstOrDefaultAsync();
 

@@ -2,6 +2,7 @@ import { Button, Card, Flex, Form, Input, Typography, message } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../lib/api'
 import { setToken } from '../lib/auth'
+import logoUrl from '../assets/logo.png'
 
 type LoginResp = {
   token: string
@@ -49,7 +50,7 @@ export function LoginPage() {
                 }}
               >
                 <img
-                  src="/logo.svg"
+                  src={logoUrl}
                   alt=""
                   width={34}
                   height={34}
@@ -84,21 +85,11 @@ export function LoginPage() {
         <Form
           layout="vertical"
           onFinish={async (values) => {
-            if (values.username === 'admin' && values.password === '123456') {
-              message.success('登录成功（Mock）')
-              setToken('mock-jwt-token-123456')
-              nav('/', { replace: true })
-              return
-            } else {
-              message.error('账号或密码错误')
-              return
-            }
-
             const resp = await apiFetch<LoginResp>('/api/v1/admin/auth/login', {
               method: 'POST',
               body: JSON.stringify(values),
             })
-            if (resp.code !== 0) {
+            if (resp.code !== 0 || !resp.data?.token) {
               message.error(resp.message || '登录失败')
               return
             }

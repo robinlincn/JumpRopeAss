@@ -18,6 +18,23 @@ CREATE TABLE `org` (
   KEY `idx_org_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='机构表（培训机构/中小学）';
 
+CREATE TABLE `school` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `name` VARCHAR(128) NOT NULL COMMENT '学校名称',
+  `short_name` VARCHAR(64) NULL COMMENT '学校简称',
+  `province` VARCHAR(32) NULL COMMENT '省',
+  `city` VARCHAR(32) NULL COMMENT '市',
+  `district` VARCHAR(32) NULL COMMENT '区县',
+  `address` VARCHAR(255) NULL COMMENT '详细地址',
+  `contact_name` VARCHAR(64) NULL COMMENT '联系人姓名',
+  `contact_phone` VARCHAR(32) NULL COMMENT '联系人电话',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1启用；0停用',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_school_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学校主表（中小学）';
+
 CREATE TABLE `person` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
   `full_name` VARCHAR(64) NOT NULL COMMENT '姓名',
@@ -47,7 +64,9 @@ CREATE TABLE `person_coach` (
 
 CREATE TABLE `person_athlete` (
   `person_id` BIGINT UNSIGNED NOT NULL COMMENT '人员ID',
-  `school_id` BIGINT UNSIGNED NOT NULL COMMENT '所属中小学ID（必填）',
+  `school_id` BIGINT UNSIGNED NOT NULL COMMENT '所属中小学ID（必填，指向school.id）',
+  `grade_name` VARCHAR(32) NULL COMMENT '年级（如一年级/七年级等）',
+  `class_name` VARCHAR(64) NULL COMMENT '班级（如一班/七年级三班等）',
   `training_org_id` BIGINT UNSIGNED NULL COMMENT '所属培训机构ID（选填）',
   `first_coach_person_id` BIGINT UNSIGNED NULL COMMENT '第一教练员人员ID（终身绑定，仅平台可改）',
   `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1有效；0无效',
@@ -83,6 +102,13 @@ CREATE TABLE `athlete_parent_bind` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_athlete_parent` (`athlete_person_id`, `parent_person_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='运动员-家长绑定（支持多个家长）';
+
+CREATE TABLE `person_parent` (
+  `person_id` BIGINT UNSIGNED NOT NULL COMMENT '人员ID',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1有效；0无效',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`person_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='家长角色表';
 
 CREATE TABLE `athlete_coach_bind` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -185,7 +211,8 @@ CREATE TABLE `member_unit` (
   `sort_no` INT NOT NULL DEFAULT 0 COMMENT '排序号',
   `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1启用；0停用',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_member_name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='会员单位（展示）';
 
 CREATE TABLE `local_association` (
@@ -223,6 +250,12 @@ CREATE TABLE `event` (
   KEY `idx_event_type_status` (`event_type`, `status`),
   KEY `idx_event_signup_time` (`signup_start_at`, `signup_end_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='活动表（赛事/评定/培训统一建模）';
+
+INSERT INTO `event` (`event_type`, `signup_scope`, `title`, `cover_url`, `need_audit`, `need_pay`, `signup_start_at`, `signup_end_at`, `event_date`, `location`, `description_html`, `status`)
+VALUES
+(1, 1, '春季校园跳绳公开赛（长沙赛区）', '/banner-1.svg', 1, 1, NOW(), DATE_ADD(NOW(), INTERVAL 10 DAY), DATE_ADD(NOW(), INTERVAL 20 DAY), '长沙市体育馆', '<p>团体与个人项目齐开，支持线上报名与审核缴费。</p>', 1),
+(1, 1, '春季团体速度赛 · 省赛', '/banner-2.svg', 1, 1, DATE_ADD(NOW(), INTERVAL 5 DAY), DATE_ADD(NOW(), INTERVAL 15 DAY), DATE_ADD(NOW(), INTERVAL 25 DAY), '湖南省体育中心', '<p>项目丰富、规则透明，电子证书赛后发放。</p>', 0),
+(2, 1, '3月等级评定（长沙地区）', '/banner-3.svg', 1, 1, NOW(), DATE_ADD(NOW(), INTERVAL 7 DAY), DATE_ADD(NOW(), INTERVAL 14 DAY), '长沙市某中学体育馆', '<p>标准化评定流程，后台审核留痕。</p>', 1);
 
 CREATE TABLE `event_group` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
@@ -355,4 +388,59 @@ CREATE TABLE `audit_log` (
   KEY `idx_audit_actor_time` (`actor_type`, `actor_id`, `created_at`),
   KEY `idx_audit_biz` (`biz_type`, `biz_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作审计日志';
+
+CREATE TABLE `person_judge` (
+  `person_id` BIGINT UNSIGNED NOT NULL COMMENT '人员ID',
+  `org_id` BIGINT UNSIGNED NOT NULL COMMENT '所属机构ID（培训机构或中小学）',
+  `judge_level` VARCHAR(32) NULL COMMENT '裁判等级（可选）',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1有效；0无效',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`person_id`),
+  KEY `idx_judge_org` (`org_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='裁判员角色表（必须绑定机构）';
+
+CREATE TABLE `project_catalog` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `code` VARCHAR(32) NULL COMMENT '项目编码（选填）',
+  `name` VARCHAR(128) NOT NULL COMMENT '项目名称',
+  `participant_count` INT NOT NULL DEFAULT 1 COMMENT '人数（单人/双人/团队）',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1启用；0停用',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_project_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='项目字典（来源：项目设定.xlsx）';
+
+CREATE TABLE `assessment_record` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `event_id` BIGINT UNSIGNED NULL COMMENT '活动ID（评定/培训）',
+  `person_id` BIGINT UNSIGNED NOT NULL COMMENT '人员ID',
+  `role_type` TINYINT NOT NULL COMMENT '角色类型：1学员；2教练员；3裁判员',
+  `group_name` VARCHAR(64) NULL COMMENT '组别',
+  `project_name` VARCHAR(128) NULL COMMENT '项目',
+  `level` VARCHAR(32) NULL COMMENT '等级/段位',
+  `result_status` VARCHAR(16) NULL COMMENT '考核状态/结果（通过/未通过等）',
+  `score` INT NULL COMMENT '分数/成绩',
+  `association_name` VARCHAR(128) NULL COMMENT '所属协会',
+  `province` VARCHAR(32) NULL COMMENT '省',
+  `city` VARCHAR(32) NULL COMMENT '市',
+  `district` VARCHAR(32) NULL COMMENT '区县',
+  `sign_person` VARCHAR(64) NULL COMMENT '签证人',
+  `activity_date` DATE NULL COMMENT '活动日期',
+  `issue_date` DATE NULL COMMENT '发证日期',
+  `valid_period_text` VARCHAR(64) NULL COMMENT '有效期文本（如2023/9/2-2027/9/1）',
+  `coach_name` VARCHAR(64) NULL COMMENT '教练员',
+  `location` VARCHAR(255) NULL COMMENT '地点/活动地点',
+  `cert_no` VARCHAR(64) NULL COMMENT '证书编号',
+  `title` VARCHAR(64) NULL COMMENT '称号（如初级教练员、三级裁判员等）',
+  `org_name` VARCHAR(128) NULL COMMENT '所属单位/学校',
+  `activity_name` VARCHAR(128) NULL COMMENT '活动名称',
+  `issuer_org` VARCHAR(128) NULL COMMENT '发证机构',
+  `recommender` VARCHAR(64) NULL COMMENT '推荐人',
+  `recommender_phone` VARCHAR(32) NULL COMMENT '推荐人电话',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_assess_person_role_time` (`person_id`, `role_type`, `created_at`),
+  KEY `idx_assess_event` (`event_id`),
+  KEY `idx_assess_cert_no` (`cert_no`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='考核记录归档（报名+成绩+发证信息）';
 
