@@ -130,7 +130,7 @@ async function fetchHomeBase() {
 
 function applyHomeBaseData(data: any) {
   if (data.banners && Array.isArray(data.banners)) {
-    banners.value = data.banners.map((x: any) => ({
+    banners.value = data.banners.map((x: BannerItem) => ({
       src: x.imageUrl || '/banner-1.svg',
       title: x.title || '推荐',
       subtitle: x.linkType === 1 ? '赛事推荐' : x.linkType === 2 ? '资讯推荐' : '快捷入口',

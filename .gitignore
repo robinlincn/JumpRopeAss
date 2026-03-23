@@ -34,3 +34,7 @@ TestMySql/
 test_mysql.cs
 Program.cs
 
+# Build artifacts
+release/
+*.zip
+
