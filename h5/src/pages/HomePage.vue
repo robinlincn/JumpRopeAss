@@ -29,9 +29,9 @@ const stats = ref<{ judges: number; athletes: number; coaches: number; events: n
 const statCards = computed(() => {
   const s = stats.value
   return [
-    { label: '裁判员', value: s?.judges ?? 0 },
-    { label: '运动员', value: s?.athletes ?? 0 },
-    { label: '教练员', value: s?.coaches ?? 0 },
+    { label: '裁判员', value: s?.judges ?? 0, path: '/judges' },
+    { label: '运动员', value: s?.athletes ?? 0, path: '/athletes' },
+    { label: '教练员', value: s?.coaches ?? 0, path: '/coaches' },
   ]
 })
 
@@ -97,14 +97,40 @@ async function fetchEvents() {
   }
 }
 
+const isHomeBaseLoading = ref(true)
+
+let homeBaseCache: any = null
+let isFetchingHomeBase = false
+
 async function fetchHomeBase() {
-  const [b, s, n] = await Promise.all([
-    apiFetch<any>('/api/v1/app/banners'),
-    apiFetch<any>('/api/v1/app/stats'),
-    apiFetch<any>('/api/v1/app/news?page=1&pageSize=3'),
-  ])
-  if (b.code === 0) {
-    banners.value = (b.data?.items ?? []).map((x: BannerItem) => ({
+  if (homeBaseCache) {
+    applyHomeBaseData(homeBaseCache)
+    isHomeBaseLoading.value = false
+    // 依然在后台静默更新
+  }
+
+  if (isFetchingHomeBase) return
+  isFetchingHomeBase = true
+
+  try {
+    const res = await apiFetch<any>('/api/v1/app/home/aggregate')
+    if (res.code === 0 && res.data) {
+      homeBaseCache = res.data
+      applyHomeBaseData(homeBaseCache)
+    } else {
+      console.error('Failed to fetch home base data:', res)
+    }
+  } catch (e) {
+    console.error('Error fetching home base data:', e)
+  } finally {
+    isHomeBaseLoading.value = false
+    isFetchingHomeBase = false
+  }
+}
+
+function applyHomeBaseData(data: any) {
+  if (data.banners && Array.isArray(data.banners)) {
+    banners.value = data.banners.map((x: any) => ({
       src: x.imageUrl || '/banner-1.svg',
       title: x.title || '推荐',
       subtitle: x.linkType === 1 ? '赛事推荐' : x.linkType === 2 ? '资讯推荐' : '快捷入口',
@@ -112,16 +138,16 @@ async function fetchHomeBase() {
       linkValue: x.linkValue,
     }))
   }
-  if (s.code === 0) {
+  if (data.stats) {
     stats.value = {
-      judges: Number(s.data?.judges ?? 0),
-      athletes: Number(s.data?.athletes ?? 0),
-      coaches: Number(s.data?.coaches ?? 0),
-      events: Number(s.data?.events ?? 0),
+      judges: Number(data.stats.judges ?? 0),
+      athletes: Number(data.stats.athletes ?? 0),
+      coaches: Number(data.stats.coaches ?? 0),
+      events: Number(data.stats.events ?? 0),
     }
   }
-  if (n.code === 0) {
-    news.value = (n.data?.items ?? []).map((x: any) => ({
+  if (data.news && Array.isArray(data.news)) {
+    news.value = data.news.map((x: any) => ({
       id: Number(x.id),
       title: String(x.title),
       publishAt: x.publishAt ?? null,
@@ -167,8 +193,9 @@ onBeforeUnmount(() => {
 <template>
   <main class="app-container page">
     <section class="hero glass">
-      <div class="hero-banner">
-        <BannerCarousel :items="banners" />
+      <div class="hero-banner" :class="{ 'skeleton-banner': isHomeBaseLoading && banners.length === 0 }">
+        <BannerCarousel v-if="banners.length > 0" :items="banners" />
+        <div v-else-if="!isHomeBaseLoading" class="empty-banner">暂无推荐</div>
       </div>
       <div class="hero-left">
         <div class="brand">
@@ -209,7 +236,7 @@ onBeforeUnmount(() => {
     </section>
 
     <section class="stats">
-      <div v-for="s in statCards" :key="s.label" class="stat card">
+      <div v-for="s in statCards" :key="s.label" class="stat card pressable" @click="router.push(s.path)" style="cursor: pointer;">
         <div class="stat-value">{{ s.value }}</div>
         <div class="stat-label">{{ s.label }}</div>
       </div>
@@ -223,23 +250,28 @@ onBeforeUnmount(() => {
         </div>
         <button class="btn-reset more" type="button" @click="router.push('/news')">更多</button>
       </div>
-      <div class="news-mini">
-        <button
-          v-for="it in news"
-          :key="it.id"
-          class="mini card btn-reset pressable"
-          type="button"
-          @click="router.push(`/news/${it.id}`)"
-        >
-          <div class="mini-left">
-            <div class="mini-top">
-              <span class="chip">{{ it.contentType === 'video' ? '视频' : '图文' }}</span>
-              <span class="meta">{{ timeText(it.publishAt) }} · {{ viewText(it.viewCount) }}</span>
+      <div class="news-mini" :class="{ 'skeleton-news-container': isHomeBaseLoading && news.length === 0 }">
+        <template v-if="news.length > 0">
+          <button
+            v-for="it in news"
+            :key="it.id"
+            class="mini card btn-reset pressable"
+            type="button"
+            @click="router.push(`/news/${it.id}`)"
+          >
+            <div class="mini-left">
+              <div class="mini-top">
+                <span class="chip">{{ it.contentType === 'video' ? '视频' : '图文' }}</span>
+                <span class="meta">{{ timeText(it.publishAt) }} · {{ viewText(it.viewCount) }}</span>
+              </div>
+              <div class="mini-title">{{ it.title }}</div>
             </div>
-            <div class="mini-title">{{ it.title }}</div>
-          </div>
-          <img class="mini-cover" :src="it.coverUrl || '/hero-jumprope.svg'" alt="" />
-        </button>
+            <img class="mini-cover" :src="it.coverUrl || '/hero-jumprope.svg'" alt="" loading="lazy" />
+          </button>
+        </template>
+        <template v-else-if="isHomeBaseLoading">
+          <div v-for="i in 3" :key="i" class="mini card skeleton-news"></div>
+        </template>
       </div>
     </section>
 
@@ -274,6 +306,42 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.empty-banner {
+  height: 180px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  font-size: 14px;
+}
+
+.skeleton-banner {
+  height: 180px;
+  border-radius: 16px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+
+.skeleton-news {
+  height: 84px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border: none;
+}
+
+@keyframes skeleton-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 .page {
   padding: 14px 12px 88px;
 }

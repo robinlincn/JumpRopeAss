@@ -62,7 +62,33 @@ public sealed class AdminCertificatesController : ControllerBase
         string Mobile,
         string? IdCardNo,
         string? IssueAt,
-        string? CertNo);
+        string? CertNo,
+        string? RaceNo,
+        string? GroupName,
+        string? Gender,
+        string? Rank,
+        string? ResultStatus,
+        string? Score,
+        string? AssociationName,
+        string? RoleName,
+        string? ProjectName,
+        string? Level,
+        string? Province,
+        string? City,
+        string? District,
+        string? Points,
+        string? SignPerson,
+        string? ActivityDate,
+        string? IssueDate,
+        string? ValidPeriodText,
+        string? CoachName,
+        string? Location,
+        string? Title,
+        string? OrgName,
+        string? ActivityName,
+        string? IssuerOrg,
+        string? Recommender,
+        string? RecommenderPhone);
 
     public sealed record ImportCertificatesRequest(List<ImportRow> Items);
 
@@ -73,6 +99,29 @@ public sealed class AdminCertificatesController : ControllerBase
         if (req.Items.Count > 2000) return ApiResponse<object>.Fail(ErrorCodes.InvalidParam, "单次导入最多2000条");
 
         var typeCodes = req.Items.Select(x => (x.CertTypeCode ?? string.Empty).Trim()).Where(x => x.Length > 0).Distinct().ToList();
+
+        var ensureDefs = new[]
+        {
+            new { Code = "athlete_level", Name = "运动员等级证书" },
+            new { Code = "coach_cert", Name = "教练员证书" },
+            new { Code = "judge_cert", Name = "裁判员证书" },
+        };
+        var ensureNeed = ensureDefs.Where(x => typeCodes.Contains(x.Code)).ToList();
+        if (ensureNeed.Count > 0)
+        {
+            var ensureCodes = ensureNeed.Select(x => x.Code).ToList();
+            var existed = await _db.CertTypes.AsNoTracking()
+                .Where(x => ensureCodes.Contains(x.Code))
+                .Select(x => x.Code)
+                .ToListAsync();
+            var missing = ensureNeed.Where(x => !existed.Contains(x.Code)).ToList();
+            if (missing.Count > 0)
+            {
+                _db.CertTypes.AddRange(missing.Select(x => new CertType { Code = x.Code, Name = x.Name, Status = 1 }));
+                await _db.SaveChangesAsync();
+            }
+        }
+
         var typeMap = await _db.CertTypes.AsNoTracking()
             .Where(x => typeCodes.Contains(x.Code) && x.Status == 1)
             .Select(x => new { x.Id, x.Code })
@@ -97,24 +146,33 @@ public sealed class AdminCertificatesController : ControllerBase
 
             var holderName = (r.HolderName ?? string.Empty).Trim();
             var mobile = (r.Mobile ?? string.Empty).Trim();
-            if (holderName.Length == 0 || mobile.Length == 0)
+            var idCard = string.IsNullOrWhiteSpace(r.IdCardNo) ? null : r.IdCardNo!.Trim();
+
+            if (holderName.Length == 0)
             {
-                errors.Add($"第{i + 2}行：姓名/手机号必填");
+                errors.Add($"第{i + 2}行：姓名必填");
                 continue;
             }
 
-            var idCard = string.IsNullOrWhiteSpace(r.IdCardNo) ? null : r.IdCardNo!.Trim();
-
             DateTime issueAt = now;
-            if (!string.IsNullOrWhiteSpace(r.IssueAt) && DateTime.TryParse(r.IssueAt!.Trim(), out var dt))
-                issueAt = dt;
+            if (!string.IsNullOrWhiteSpace(r.IssueAt))
+            {
+                if (DateTime.TryParse(r.IssueAt!.Trim(), out var dt)) issueAt = dt;
+                else if (double.TryParse(r.IssueAt!.Trim(), out var oaDate)) issueAt = DateTime.FromOADate(oaDate);
+            }
+
+            sbyte? gender = null;
+            var genderRaw = (r.Gender ?? string.Empty).Trim();
+            if (genderRaw == "男") gender = 1;
+            else if (genderRaw == "女") gender = 2;
+            else if (sbyte.TryParse(genderRaw, out var g) && g is >= 0 and <= 2) gender = g;
 
             Person? person = null;
             if (!string.IsNullOrWhiteSpace(idCard))
             {
                 person = await _db.People.FirstOrDefaultAsync(x => x.DeletedAt == null && x.IdCardNo == idCard);
             }
-            if (person is null)
+            if (person is null && mobile.Length > 0)
             {
                 person = await _db.People.FirstOrDefaultAsync(x => x.DeletedAt == null && x.Mobile == mobile && x.FullName == holderName);
             }
@@ -123,8 +181,8 @@ public sealed class AdminCertificatesController : ControllerBase
                 person = new Person
                 {
                     FullName = holderName,
-                    Mobile = mobile,
-                    Gender = 0,
+                    Mobile = mobile.Length > 0 ? mobile : null,
+                    Gender = gender,
                     IdCardNo = idCard,
                     Birthday = null,
                     Status = 1,
@@ -138,7 +196,8 @@ public sealed class AdminCertificatesController : ControllerBase
             else
             {
                 person.FullName = holderName;
-                person.Mobile = mobile;
+                if (mobile.Length > 0) person.Mobile = mobile;
+                if (gender is not null) person.Gender = gender;
                 if (!string.IsNullOrWhiteSpace(idCard)) person.IdCardNo = idCard;
                 person.UpdatedAt = now;
                 await _db.SaveChangesAsync();
@@ -151,6 +210,88 @@ public sealed class AdminCertificatesController : ControllerBase
                 skipped++;
                 continue;
             }
+
+            var roleType = (sbyte)1;
+            var roleName = (r.RoleName ?? string.Empty).Trim();
+            if (roleName == "教练员") roleType = 2;
+            else if (roleName == "裁判员") roleType = 3;
+            else if (typeCode == "coach_cert") roleType = 2;
+            else if (typeCode == "judge_cert") roleType = 3;
+
+            var resultStatus = (r.ResultStatus ?? string.Empty).Trim();
+            var scoreText = (r.Score ?? string.Empty).Trim();
+            if (resultStatus.Length == 0 && (scoreText == "通过" || scoreText == "未通过" || scoreText == "合格" || scoreText == "不合格"))
+            {
+                resultStatus = scoreText;
+                scoreText = string.Empty;
+            }
+
+            int? scoreValue = null;
+            if (int.TryParse(scoreText, out var sv)) scoreValue = sv;
+            else if (double.TryParse(scoreText, out var sd)) scoreValue = (int)Math.Round(sd);
+            if (scoreValue is null)
+            {
+                var pointsText = (r.Points ?? string.Empty).Trim();
+                if (int.TryParse(pointsText, out var pv)) scoreValue = pv;
+                else if (double.TryParse(pointsText, out var pd)) scoreValue = (int)Math.Round(pd);
+            }
+
+            DateOnly? activityDate = null;
+            var activityRaw = (r.ActivityDate ?? string.Empty).Trim();
+            if (activityRaw.Length > 0)
+            {
+                if (DateOnly.TryParse(activityRaw, out var ad)) activityDate = ad;
+                else if (double.TryParse(activityRaw, out var adOa)) activityDate = DateOnly.FromDateTime(DateTime.FromOADate(adOa));
+            }
+
+            DateOnly? issueDate = null;
+            var issueDateRaw = (r.IssueDate ?? string.Empty).Trim();
+            if (issueDateRaw.Length > 0)
+            {
+                if (DateOnly.TryParse(issueDateRaw, out var idt)) issueDate = idt;
+                else if (double.TryParse(issueDateRaw, out var idOa)) issueDate = DateOnly.FromDateTime(DateTime.FromOADate(idOa));
+            }
+
+            var assess = await _db.AssessmentRecords.FirstOrDefaultAsync(x => x.CertNo == certNo);
+            if (assess is null)
+            {
+                assess = new AssessmentRecord
+                {
+                    EventId = null,
+                    PersonId = person.Id,
+                    RoleType = roleType,
+                    CreatedAt = now,
+                };
+                _db.AssessmentRecords.Add(assess);
+            }
+            else
+            {
+                assess.PersonId = person.Id;
+                assess.RoleType = roleType;
+            }
+
+            assess.GroupName = string.IsNullOrWhiteSpace(r.GroupName) ? null : r.GroupName!.Trim();
+            assess.ProjectName = string.IsNullOrWhiteSpace(r.ProjectName) ? null : r.ProjectName!.Trim();
+            assess.Level = string.IsNullOrWhiteSpace(r.Level) ? null : r.Level!.Trim();
+            assess.ResultStatus = resultStatus.Length == 0 ? null : resultStatus;
+            assess.Score = scoreValue;
+            assess.AssociationName = string.IsNullOrWhiteSpace(r.AssociationName) ? null : r.AssociationName!.Trim();
+            assess.Province = string.IsNullOrWhiteSpace(r.Province) ? null : r.Province!.Trim();
+            assess.City = string.IsNullOrWhiteSpace(r.City) ? null : r.City!.Trim();
+            assess.District = string.IsNullOrWhiteSpace(r.District) ? null : r.District!.Trim();
+            assess.SignPerson = string.IsNullOrWhiteSpace(r.SignPerson) ? null : r.SignPerson!.Trim();
+            assess.ActivityDate = activityDate;
+            assess.IssueDate = issueDate;
+            assess.ValidPeriodText = string.IsNullOrWhiteSpace(r.ValidPeriodText) ? null : r.ValidPeriodText!.Trim();
+            assess.CoachName = string.IsNullOrWhiteSpace(r.CoachName) ? null : r.CoachName!.Trim();
+            assess.Location = string.IsNullOrWhiteSpace(r.Location) ? null : r.Location!.Trim();
+            assess.CertNo = certNo;
+            assess.Title = string.IsNullOrWhiteSpace(r.Title) ? null : r.Title!.Trim();
+            assess.OrgName = string.IsNullOrWhiteSpace(r.OrgName) ? null : r.OrgName!.Trim();
+            assess.ActivityName = string.IsNullOrWhiteSpace(r.ActivityName) ? null : r.ActivityName!.Trim();
+            assess.IssuerOrg = string.IsNullOrWhiteSpace(r.IssuerOrg) ? null : r.IssuerOrg!.Trim();
+            assess.Recommender = string.IsNullOrWhiteSpace(r.Recommender) ? null : r.Recommender!.Trim();
+            assess.RecommenderPhone = string.IsNullOrWhiteSpace(r.RecommenderPhone) ? null : r.RecommenderPhone!.Trim();
 
             var cert = new Certificate
             {
@@ -171,6 +312,24 @@ public sealed class AdminCertificatesController : ControllerBase
         await tx.CommitAsync();
 
         return ApiResponse<object>.Ok(new { created, skipped, errorCount = errors.Count, errors });
+    }
+
+    [HttpPost("certificates/clear")]
+    public async Task<ApiResponse<object>> ClearCertificates()
+    {
+        var deleted = 0;
+        try
+        {
+            deleted = await _db.Certificates.ExecuteDeleteAsync();
+        }
+        catch
+        {
+            var all = await _db.Certificates.ToListAsync();
+            deleted = all.Count;
+            _db.Certificates.RemoveRange(all);
+            await _db.SaveChangesAsync();
+        }
+        return ApiResponse<object>.Ok(new { deleted });
     }
 
     public sealed record ResetCertificatesRequest(List<ulong> Ids);
@@ -309,6 +468,18 @@ public sealed class AdminCertificatesController : ControllerBase
                 x.Province,
                 x.City,
                 x.District,
+                x.SignPerson,
+                x.ActivityDate,
+                x.IssueDate,
+                x.ValidPeriodText,
+                x.CoachName,
+                x.Location,
+                x.Title,
+                x.OrgName,
+                x.ActivityName,
+                x.IssuerOrg,
+                x.Recommender,
+                x.RecommenderPhone,
             })
             .ToDictionaryAsync(x => x.CertNo!, x => x);
 
@@ -375,17 +546,28 @@ public sealed class AdminCertificatesController : ControllerBase
                 holderIdCardNo = r.holderIdCardNo ?? (evd != null ? (string?)evd.athleteIdCardNo : null),
                 holderIdCardNoMasked = r.holderIdCardNoMasked ?? (evd != null ? (string?)evd.athleteIdCardNoMasked : null),
 
+                rank = (string?)null,
                 assessStatus = ar?.ResultStatus,
                 score = ar?.Score,
-                points = ar?.Score,
-                rank = (int?)null,
-
                 associationName = ar?.AssociationName,
-                certLevel = ar?.Level,
                 projectName = ar?.ProjectName,
+                certLevel = ar?.Level,
                 province = ar?.Province,
                 city = ar?.City,
                 district = ar?.District,
+                points = ar?.Score,
+                issuerName = ar?.SignPerson,
+                eventDate = ar?.ActivityDate != null ? ar.ActivityDate.Value.ToString("yyyy-MM-dd") : null,
+                issueDate = ar?.IssueDate != null ? ar.IssueDate.Value.ToString("yyyy-MM-dd") : null,
+                validPeriod = ar?.ValidPeriodText,
+                coachName = ar?.CoachName,
+                location = ar?.Location,
+                titleName = ar?.Title,
+                unitName = ar?.OrgName,
+                eventName = ar?.ActivityName ?? (evd != null ? (string?)evd.eventTitle : null),
+                issueOrg = ar?.IssuerOrg,
+                referrerName = ar?.Recommender,
+                referrerPhone = ar?.RecommenderPhone,
 
                 r.issueScene,
                 r.issueAt,
@@ -412,4 +594,3 @@ public sealed class AdminCertificatesController : ControllerBase
         return $"{typeCode}-{date}-{Guid.NewGuid():N}".Substring(0, Math.Min(64, $"{typeCode}-{date}-{Guid.NewGuid():N}".Length));
     }
 }
-

@@ -1,4 +1,4 @@
-import { Button, Card, Col, Form, Grid, Input, Modal, Row, Select, Space, Table, Tag, Typography, Upload, message } from 'antd'
+import { Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tag, Typography, Upload, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { DownloadOutlined, ReloadOutlined, UploadOutlined } from '@ant-design/icons'
 import { useEffect, useMemo, useState } from 'react'
@@ -26,21 +26,68 @@ type CertRow = {
   holderMobileMasked?: string | null
   holderIdCardNo?: string | null
   holderIdCardNoMasked?: string | null
-  assessStatus?: number | null
+  assessStatus?: string | null
   score?: number | null
   points?: number | null
-  rank?: number | null
+  rank?: string | null
   associationName?: string | null
   certLevel?: string | null
   projectName?: string | null
   province?: string | null
   city?: string | null
   district?: string | null
+  issuerName?: string | null
+  eventDate?: string | null
+  issueDate?: string | null
+  validPeriod?: string | null
+  coachName?: string | null
+  location?: string | null
+  titleName?: string | null
+  unitName?: string | null
+  eventName?: string | null
+  issueOrg?: string | null
+  referrerName?: string | null
+  referrerPhone?: string | null
   issueScene: IssueScene
   issueAt: string
   status: CertStatus
   fileUrl?: string | null
   createdAt: string
+}
+
+type ImportRow = {
+  certTypeCode: string
+  holderName: string
+  mobile: string
+  idCardNo: string
+  issueAt: string
+  certNo: string
+  raceNo: string
+  groupName: string
+  gender: string
+  rank: string
+  resultStatus: string
+  score: string
+  associationName: string
+  roleName: string
+  projectName: string
+  level: string
+  province: string
+  city: string
+  district: string
+  points: string
+  signPerson: string
+  activityDate: string
+  issueDate: string
+  validPeriodText: string
+  coachName: string
+  location: string
+  title: string
+  orgName: string
+  activityName: string
+  issuerOrg: string
+  recommender: string
+  recommenderPhone: string
 }
 
 type FilterValues = {
@@ -64,12 +111,7 @@ function genderText(v?: number | null) {
   return '-'
 }
 
-function areaText(p?: string | null, c?: string | null, d?: string | null) {
-  return [p, c, d].filter((x) => !!String(x ?? '').trim()).join(' / ') || '-'
-}
-
 export function CertificatesListPage() {
-  const screens = Grid.useBreakpoint()
   const [form] = Form.useForm<FilterValues>()
   const [types, setTypes] = useState<CertTypeOption[]>([])
   const [rows, setRows] = useState<CertRow[]>([])
@@ -83,7 +125,7 @@ export function CertificatesListPage() {
   const [importing, setImporting] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [importRows, setImportRows] = useState<any[] | null>(null)
+  const [importRows, setImportRows] = useState<ImportRow[] | null>(null)
   const [printBgDataUrl, setPrintBgDataUrl] = useState<string | null>(null)
   const [queryPrefix, setQueryPrefix] = useState<string>(() => {
     const k = 'admin_cert_query_prefix'
@@ -150,16 +192,28 @@ export function CertificatesListPage() {
         holderMobileMasked: x.holderMobileMasked ?? null,
         holderIdCardNo: x.holderIdCardNo ?? null,
         holderIdCardNoMasked: x.holderIdCardNoMasked ?? null,
-        assessStatus: x.assessStatus != null ? Number(x.assessStatus) : null,
+        assessStatus: x.assessStatus ?? null,
         score: x.score != null ? Number(x.score) : null,
         points: x.points != null ? Number(x.points) : null,
-        rank: x.rank != null ? Number(x.rank) : null,
+        rank: x.rank ?? null,
         associationName: x.associationName ?? null,
         certLevel: x.certLevel ?? null,
         projectName: x.projectName ?? null,
         province: x.province ?? null,
         city: x.city ?? null,
         district: x.district ?? null,
+        issuerName: x.issuerName ?? null,
+        eventDate: x.eventDate ?? null,
+        issueDate: x.issueDate ?? null,
+        validPeriod: x.validPeriod ?? null,
+        coachName: x.coachName ?? null,
+        location: x.location ?? null,
+        titleName: x.titleName ?? null,
+        unitName: x.unitName ?? null,
+        eventName: x.eventName ?? null,
+        issueOrg: x.issueOrg ?? null,
+        referrerName: x.referrerName ?? null,
+        referrerPhone: x.referrerPhone ?? null,
         issueScene: Number(x.issueScene) as IssueScene,
         issueAt: String(x.issueAt ?? '').replace('T', ' '),
         status: Number(x.status) as CertStatus,
@@ -190,82 +244,111 @@ export function CertificatesListPage() {
   const certQrImgUrl = (certNo: string) =>
     `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(certQueryUrl(certNo))}`
 
-  const columns: ColumnsType<CertRow> = [
-    { title: '证书ID', dataIndex: 'id', width: 120, fixed: screens.lg ? 'left' : undefined },
-    { title: '证书编号', dataIndex: 'certNo', width: 220, render: (v: string) => <Typography.Text strong>{v}</Typography.Text> },
-    { title: '证书类型', dataIndex: 'certTypeName', width: 180, render: (_, r) => r.certTypeName ?? '-' },
-    { title: '持证人', dataIndex: 'holderName', width: 160, render: (_, r) => r.holderName ?? '-' },
-    { title: '赛号', dataIndex: 'raceNo', width: 110, render: (v?: number | null) => (v != null ? String(v) : '-') },
-    { title: '组别', dataIndex: 'groupName', width: 160, render: (v?: string | null) => v ?? '-' },
-    { title: '性别', dataIndex: 'gender', width: 90, render: (v?: number | null) => genderText(v) },
-    {
-      title: '手机号',
-      dataIndex: 'holderMobileMasked',
-      width: 150,
-      render: (_, r) => (
-        <Typography.Text copyable={r.holderMobile ? { text: r.holderMobile } : false}>
-          {r.holderMobileMasked || r.holderMobile || '-'}
-        </Typography.Text>
-      ),
-    },
-    {
-      title: '身份证号',
-      dataIndex: 'holderIdCardNoMasked',
-      width: 200,
-      render: (_, r) => (
-        <Typography.Text copyable={r.holderIdCardNo ? { text: r.holderIdCardNo } : false}>
-          {r.holderIdCardNoMasked || r.holderIdCardNo || '-'}
-        </Typography.Text>
-      ),
-    },
-    { title: '考核状态', dataIndex: 'assessStatus', width: 110, render: (v?: number | null) => (v != null ? String(v) : '-') },
-    { title: '成绩', dataIndex: 'score', width: 110, render: (v?: number | null) => (v != null ? String(v) : '-') },
-    { title: '分数', dataIndex: 'points', width: 110, render: (v?: number | null) => (v != null ? String(v) : '-') },
-    { title: '名次', dataIndex: 'rank', width: 100, render: (v?: number | null) => (v != null ? String(v) : '-') },
-    { title: '所属协会', dataIndex: 'associationName', width: 180, render: (v?: string | null) => v ?? '-' },
-    { title: '证书等级', dataIndex: 'certLevel', width: 150, render: (v?: string | null) => v ?? '-' },
-    { title: '项目', dataIndex: 'projectName', width: 180, render: (v?: string | null) => v ?? '-' },
-    { title: '省市县', dataIndex: 'area', width: 220, render: (_, r) => areaText(r.province, r.city, r.district) },
-    { title: '发证场景', dataIndex: 'issueScene', width: 120, render: (v: IssueScene) => <Tag>{sceneText(v)}</Tag> },
-    { title: '发证时间', dataIndex: 'issueAt', width: 170 },
-    { title: '状态', dataIndex: 'status', width: 110, render: (v: CertStatus) => statusTag(v) },
-    {
-      title: '二维码',
-      dataIndex: 'qr',
-      width: 160,
-      render: (_, r) => (
-        <Space direction="vertical" size={6}>
-          <img
-            src={certQrImgUrl(r.certNo)}
-            alt=""
-            width={92}
-            height={92}
-            style={{ borderRadius: 12, border: '1px solid rgba(0,0,0,0.06)' }}
-          />
-          <Typography.Text
-            type="secondary"
-            copyable={{ text: certQueryUrl(r.certNo) }}
-            style={{ fontSize: 12, maxWidth: 140 }}
-            ellipsis={{ tooltip: certQueryUrl(r.certNo) }}
-          >
-            复制查询链接
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    { title: '文件', dataIndex: 'fileUrl', width: 220, render: (v?: string | null) => (v ? <Typography.Text ellipsis={{ tooltip: v }}>{v}</Typography.Text> : '-') },
-    { title: '创建时间', dataIndex: 'createdAt', width: 170 },
-  ]
+  const columns: ColumnsType<CertRow> = useMemo(
+    () => [
+      { title: '赛号', dataIndex: 'raceNo', key: 'raceNo', width: 80, align: 'center' },
+      { title: '组别', dataIndex: 'groupName', key: 'groupName', width: 140 },
+      { title: '姓名', dataIndex: 'holderName', key: 'holderName', width: 100 },
+      { title: '性别', dataIndex: 'gender', key: 'gender', width: 60, render: genderText, align: 'center' },
+      { title: '手机号', dataIndex: 'holderMobile', key: 'holderMobile', width: 120 },
+      { title: '身份证号', dataIndex: 'holderIdCardNo', key: 'holderIdCardNo', width: 180 },
+      { title: '名次', dataIndex: 'rank', key: 'rank', width: 80, align: 'center' },
+      {
+        title: '考核状态',
+        dataIndex: 'assessStatus',
+        key: 'assessStatus',
+        width: 100,
+        render: (v) => (v ? String(v) : '-'),
+      },
+      { title: '成绩', dataIndex: 'score', key: 'score', width: 80 },
+      { title: '所属协会', dataIndex: 'associationName', key: 'associationName', width: 140 },
+      { title: '角色', dataIndex: 'certTypeName', key: 'certTypeName', width: 100 },
+      { title: '项目', dataIndex: 'projectName', key: 'projectName', width: 140 },
+      { title: '等级', dataIndex: 'certLevel', key: 'certLevel', width: 100 },
+      { title: '省', dataIndex: 'province', key: 'province', width: 80 },
+      { title: '市', dataIndex: 'city', key: 'city', width: 80 },
+      { title: '区', dataIndex: 'district', key: 'district', width: 80 },
+      { title: '分数', dataIndex: 'points', key: 'points', width: 80 },
+      { title: '签证人', dataIndex: 'issuerName', key: 'issuerName', width: 100 },
+      {
+        title: '活动日期',
+        dataIndex: 'eventDate',
+        key: 'eventDate',
+        width: 120,
+        render: (v) => (v ? v.substring(0, 10) : '-'),
+      },
+      {
+        title: '发证日期',
+        dataIndex: 'issueDate',
+        key: 'issueDate',
+        width: 120,
+        render: (v) => (v ? v.substring(0, 10) : '-'),
+      },
+      { title: '有效期', dataIndex: 'validPeriod', key: 'validPeriod', width: 180 },
+      { title: '教练员', dataIndex: 'coachName', key: 'coachName', width: 100 },
+      { title: '地点', dataIndex: 'location', key: 'location', width: 140 },
+      { title: '证书编号', dataIndex: 'certNo', key: 'certNo', width: 180 },
+      { title: '称号', dataIndex: 'titleName', key: 'titleName', width: 120 },
+      { title: '所属单位', dataIndex: 'unitName', key: 'unitName', width: 180 },
+      { title: '活动名称', dataIndex: 'eventName', key: 'eventName', width: 200 },
+      { title: '发证机构', dataIndex: 'issueOrg', key: 'issueOrg', width: 180 },
+      { title: '推荐人', dataIndex: 'referrerName', key: 'referrerName', width: 100 },
+      { title: '推荐人电话', dataIndex: 'referrerPhone', key: 'referrerPhone', width: 120 },
+      {
+        title: '场景',
+        dataIndex: 'issueScene',
+        key: 'issueScene',
+        width: 80,
+        render: (v) => sceneText(v),
+        align: 'center',
+        fixed: 'right',
+      },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        key: 'status',
+        width: 80,
+        render: (v) => statusTag(v),
+        align: 'center',
+        fixed: 'right',
+      },
+    ],
+    [],
+  )
 
   const exportTemplate = () => {
     const ws = XLSX.utils.json_to_sheet([
       {
-        certTypeCode: 'coach_cert',
-        holderName: '张三',
-        mobile: '13800000000',
-        idCardNo: '4301************1234',
-        issueAt: '2026-03-20 10:00:00',
-        certNo: '',
+        赛号: '',
+        组别: 'U12',
+        姓名: '张三',
+        性别: '男',
+        手机号: '13800000000',
+        身份证号: '4301************12',
+        名次: '1',
+        考核状态: '通过',
+        成绩: '80',
+        所属协会: '湖南省跳绳运动协会',
+        角色: '学员',
+        项目: '30秒单摇跳速度',
+        等级: '一段',
+        省: '湖南省',
+        市: '长沙市',
+        区: '',
+        分数: '80',
+        签证人: '向彭',
+        活动日期: '2026-03-20',
+        发证日期: '2026-03-20',
+        有效期: '',
+        教练员: '李四',
+        地点: '湖南长沙',
+        证书编号: '',
+        称号: '',
+        所属单位: '测试单位',
+        活动名称: '2026年测试活动',
+        发证机构: '《湖南省跳绳运动协会》',
+        推荐人: '',
+        推荐人电话: '',
       },
     ])
     const wb = XLSX.utils.book_new()
@@ -289,16 +372,51 @@ export function CertificatesListPage() {
         }
         return ''
       }
+      
+      const roleName = get(['角色'])
+      let typeCode = get(['certTypeCode', '证书类型编码', '证书类型code'])
+      if (!typeCode) typeCode = roleName
+      if (typeCode === '教练员') typeCode = 'coach_cert'
+      if (typeCode === '学员' || typeCode === '运动员') typeCode = 'athlete_level'
+      if (typeCode === '裁判员') typeCode = 'judge_cert'
+
       return {
-        certTypeCode: get(['certTypeCode', '证书类型编码', '证书类型code']),
-        holderName: get(['holderName', '姓名', '持证人', '持证人姓名']),
+        certTypeCode: typeCode,
+        holderName: get(['holderName', '姓名', '持证人', '持证人姓名', '姓名（中文）']),
         mobile: get(['mobile', '手机号', '手机']),
         idCardNo: get(['idCardNo', '身份证号', '证件号']),
-        issueAt: get(['issueAt', '发证时间', '签发时间']),
+        issueAt: get(['issueAt', '发证日期', '发证时间', '签发时间']),
         certNo: get(['certNo', '证书编号']),
+        raceNo: get(['赛号']),
+        groupName: get(['组别']),
+        gender: get(['性别']),
+        rank: get(['名次']),
+        resultStatus: get(['考核状态', '考核结果']),
+        score: get(['成绩']),
+        associationName: get(['所属协会']),
+        roleName,
+        projectName: get(['项目']),
+        level: get(['等级']),
+        province: get(['省']),
+        city: get(['市']),
+        district: get(['区']),
+        points: get(['分数']),
+        signPerson: get(['签证人']),
+        activityDate: get(['活动日期']),
+        issueDate: get(['发证日期']),
+        validPeriodText: get(['有效期']),
+        coachName: get(['教练员']),
+        location: get(['地点']),
+        title: get(['称号']),
+        orgName: get(['所属单位']),
+        activityName: get(['活动名称']),
+        issuerOrg: get(['发证机构']),
+        recommender: get(['推荐人']),
+        recommenderPhone: get(['推荐人电话']),
       }
     }
-    setImportRows(json.map(mapRow).filter((x) => x.certTypeCode || x.holderName || x.mobile))
+    const mapped = json.map(mapRow)
+    setImportRows(mapped.filter((x) => x.certTypeCode && (x.holderName || x.idCardNo || x.mobile)))
   }
 
   const doImport = async () => {
@@ -318,6 +436,32 @@ export function CertificatesListPage() {
             idCardNo: x.idCardNo || null,
             issueAt: x.issueAt || null,
             certNo: x.certNo || null,
+            raceNo: x.raceNo || null,
+            groupName: x.groupName || null,
+            gender: x.gender || null,
+            rank: x.rank || null,
+            resultStatus: x.resultStatus || null,
+            score: x.score || null,
+            associationName: x.associationName || null,
+            roleName: x.roleName || null,
+            projectName: x.projectName || null,
+            level: x.level || null,
+            province: x.province || null,
+            city: x.city || null,
+            district: x.district || null,
+            points: x.points || null,
+            signPerson: x.signPerson || null,
+            activityDate: x.activityDate || null,
+            issueDate: x.issueDate || null,
+            validPeriodText: x.validPeriodText || null,
+            coachName: x.coachName || null,
+            location: x.location || null,
+            title: x.title || null,
+            orgName: x.orgName || null,
+            activityName: x.activityName || null,
+            issuerOrg: x.issuerOrg || null,
+            recommender: x.recommender || null,
+            recommenderPhone: x.recommenderPhone || null,
           })),
         }),
       })
@@ -325,7 +469,26 @@ export function CertificatesListPage() {
         message.error(res.message || '导入失败')
         return
       }
-      message.success(`导入完成：新增${res.data?.created ?? 0}，跳过${res.data?.skipped ?? 0}`)
+      const created = Number(res.data?.created ?? 0)
+      const skipped = Number(res.data?.skipped ?? 0)
+      const errorCount = Number(res.data?.errorCount ?? 0)
+      const errors: string[] = Array.isArray(res.data?.errors) ? res.data.errors : []
+
+      if (errorCount > 0) {
+        Modal.error({
+          title: `导入存在错误：成功${created}，跳过${skipped}，错误${errorCount}`,
+          width: 720,
+          content: (
+            <div style={{ whiteSpace: 'pre-wrap' }}>
+              {(errors.slice(0, 30).join('\n') || '未返回错误明细') + (errorCount > 30 ? `\n...（仅展示前30条）` : '')}
+            </div>
+          ),
+        })
+        if (created > 0) await loadData(1, pageSize)
+        return
+      }
+
+      message.success(`导入完成：新增${created}，跳过${skipped}`)
       setImportOpen(false)
       setImportRows(null)
       await loadData(1, pageSize)
@@ -367,17 +530,36 @@ export function CertificatesListPage() {
       const all = await fetchAllForExport()
       const ws = XLSX.utils.json_to_sheet(
         all.map((x: any) => ({
-          certNo: x.certNo,
-          certTypeCode: x.certTypeCode,
-          certTypeName: x.certTypeName,
-          holderName: x.holderName,
-          holderMobile: x.holderMobile,
-          holderIdCardNo: x.holderIdCardNoMasked,
-          issueScene: x.issueScene,
-          issueAt: x.issueAt ? String(x.issueAt).replace('T', ' ') : '',
-          status: x.status,
-          fileUrl: x.fileUrl,
-          createdAt: x.createdAt ? String(x.createdAt).replace('T', ' ') : '',
+          赛号: x.raceNo ?? '',
+          组别: x.groupName ?? '',
+          姓名: x.holderName ?? '',
+          性别: x.gender === 1 ? '男' : x.gender === 2 ? '女' : '',
+          手机号: x.holderMobile ?? '',
+          身份证号: x.holderIdCardNoMasked ?? x.holderIdCardNo ?? '',
+          名次: x.rank ?? '',
+          考核状态: x.assessStatus ?? '',
+          成绩: x.score ?? '',
+          所属协会: x.associationName ?? '',
+          角色: x.certTypeName ?? '',
+          项目: x.projectName ?? '',
+          等级: x.certLevel ?? '',
+          省: x.province ?? '',
+          市: x.city ?? '',
+          区: x.district ?? '',
+          分数: x.points ?? '',
+          签证人: x.issuerName ?? '',
+          活动日期: x.eventDate ? String(x.eventDate).substring(0, 10) : '',
+          发证日期: x.issueDate ? String(x.issueDate).substring(0, 10) : x.issueAt ? String(x.issueAt).substring(0, 10) : '',
+          有效期: x.validPeriod ?? '',
+          教练员: x.coachName ?? '',
+          地点: x.location ?? '',
+          证书编号: x.certNo ?? '',
+          称号: x.titleName ?? '',
+          所属单位: x.unitName ?? '',
+          活动名称: x.eventName ?? '',
+          发证机构: x.issueOrg ?? '',
+          推荐人: x.referrerName ?? '',
+          推荐人电话: x.referrerPhone ?? '',
         })),
       )
       const wb = XLSX.utils.book_new()
@@ -418,6 +600,27 @@ export function CertificatesListPage() {
         } finally {
           setResetting(false)
         }
+      },
+    })
+  }
+
+  const doClearCertificates = async () => {
+    Modal.confirm({
+      title: '清空证书表',
+      content: '将删除证书表中的所有记录，用于导入测试。此操作不可恢复。',
+      okText: '确认清空',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        const res = await apiFetch<any>('/api/v1/admin/certificates/clear', { method: 'POST' })
+        if (res.code !== 0) {
+          message.error(res.message || '清空失败')
+          return
+        }
+        message.success(`已清空证书表：删除${Number(res.data?.deleted ?? 0)}条`)
+        setSelectedRowKeys([])
+        setPage(1)
+        await loadData(1, pageSize)
       },
     })
   }
@@ -531,6 +734,9 @@ export function CertificatesListPage() {
                 <Button danger loading={resetting} onClick={doReset} disabled={!selectedRowKeys.length}>
                   重置证书
                 </Button>
+                <Button danger onClick={doClearCertificates}>
+                  清空证书表
+                </Button>
                 <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
                   导入
                 </Button>
@@ -595,7 +801,7 @@ export function CertificatesListPage() {
       >
         <Space direction="vertical" size={12} style={{ width: '100%' }}>
           <Typography.Text type="secondary">
-            模板字段：certTypeCode（证书类型编码）/ holderName（姓名）/ mobile（手机号）/ idCardNo（可选）/ issueAt（可选）/ certNo（可选，留空自动生成）
+            模板字段与 Doc/运动员报名.xlsx 一致；至少需要：角色、姓名、证书编号（可选）、发证日期（可选）。手机号/身份证号可为空，但建议至少保留其一便于匹配人员。
           </Typography.Text>
           <Space wrap>
             <Button onClick={exportTemplate}>下载模板</Button>
@@ -676,4 +882,3 @@ export function CertificatesListPage() {
     </Space>
   )
 }
-

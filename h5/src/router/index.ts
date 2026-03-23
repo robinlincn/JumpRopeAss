@@ -16,11 +16,15 @@ import MeOrgPage from '../pages/MeOrgPage.vue'
 import MeActivityPage from '../pages/MeActivityPage.vue'
 import MeHomePage from '../pages/MeHomePage.vue'
 import CertVerifyPage from '../pages/CertVerifyPage.vue'
+import PersonnelPage from '../pages/PersonnelPage.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', component: HomePage },
+    { path: '/judges', component: PersonnelPage, meta: { type: 'judges', title: '裁判员' } },
+    { path: '/athletes', component: PersonnelPage, meta: { type: 'athletes', title: '运动员' } },
+    { path: '/coaches', component: PersonnelPage, meta: { type: 'coaches', title: '教练员' } },
     { path: '/org/members', component: MembersPage },
     { path: '/org/locals', component: LocalsPage },
     { path: '/about', component: AboutPage },
